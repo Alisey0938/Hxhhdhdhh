@@ -1,128 +1,135 @@
-import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_v2ray/flutter_v2ray.dart';
+import 'package:http/http.dart' as http;
 
 void main() {
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'V2Ray Client',
+      title: 'V2Ray App',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF050508),
-        primaryColor: const Color(0xFF00FF9D),
+        scaffoldBackgroundColor: const Color(0xFF0F172A),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF1E293B),
+          centerTitle: true,
+          elevation: 0,
+        ),
       ),
-      home: const MainScreen(),
+      home: const ServerListScreen(),
     );
   }
 }
 
-class MainScreen extends StatefulWidget {
-  const MainScreen({Key? key}) : super(key: key);
+class ServerListScreen extends StatefulWidget {
+  const ServerListScreen({super.key});
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  State<ServerListScreen> createState() => _ServerListScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
-  late FlutterV2ray v2ray;
-  bool isConnected = false;
-  String downloadSpeed = '0.0 KB/s';
-  String uploadSpeed = '0.0 KB/s';
-  
-  // دیتای نمونه سرورها (که در اپ قرار می‌گیرد)
-  List<Map<String, dynamic>> servers = [
-    {
-      'id': 1,
-      'name': '🇩🇪 سرور آلمان - اختصاصی',
-      'config': 'vless://example-uuid@1.2.3.4:443?type=ws&security=tls#Germany'
-    },
-    {
-      'id': 2,
-      'name': '🇫🇮 سرور فنلاند - پرسرعت',
-      'config': 'vmess://example-config-base64-here#Finland'
-    },
-  ];
+class _ServerListScreenState extends State<ServerListScreen> {
+  // 🔴 آدرس دیتابیس فایربیس خود را دقیقاً در سطر زیر جایگزین کنید:
+  final String firebaseUrl = "https://pane-dcc9a-default-rtdb.firebaseio.com/configs.json";
 
-  Map<String, dynamic>? selectedServer;
-  
-  // اطلاعات کاربر (حجم 0 یعنی نامحدود)
-  double limitGB = 0; // 0 = Unlimited
-  double usedBytes = 0;
+  late FlutterV2ray flutterV2ray;
+  List<dynamic> _configs = [];
+  bool _isLoading = true;
+  String? _connectedConfigId;
+  bool _isConnected = false;
 
   @override
   void initState() {
     super.initState();
-    selectedServer = servers.first;
-    _initV2RayCore();
+    _initV2Ray();
+    _fetchConfigs();
   }
 
-  void _initV2RayCore() {
-    v2ray = FlutterV2ray(
+  // ۱. مقداردهی اولیه هسته V2Ray
+  void _initV2Ray() {
+    flutterV2ray = FlutterV2ray(
       onStatusChanged: (status) {
-        if (mounted) {
-          setState(() {
-            isConnected = status.state == "CONNECTED";
-            
-            // ۱. دریافت سرعت واقعی محاسبه‌شده توسط هسته
-            downloadSpeed = _formatSpeed(status.downloadSpeed);
-            uploadSpeed = _formatSpeed(status.uploadSpeed);
+        setState(() {
+          _isConnected = status.state == 'CONNECTED';
+          if (!_isConnected && status.state == 'DISCONNECTED') {
+            _connectedConfigId = null;
+          }
+        });
+      },
+    );
+    flutterV2ray.initializeV2Ray();
+  }
 
-            // ۲. محاسبه حجم واقعی کسر شده بر اساس بایت‌های دریافتی/ارسالی
-            usedBytes = (status.download + status.upload).toDouble();
-            
-            // بررسی سقف حجم (اگر محدود تعریف شده باشد)
-            if (limitGB > 0) {
-              double usedGB = usedBytes / (1024 * 1024 * 1024);
-              if (usedGB >= limitGB) {
-                v2ray.stopV2Ray();
-                _showExpiredDialog();
-              }
+  // ۲. دریافت آنلاین کانفیگ‌ها از پنل مدیریت (فایربیس)
+  Future<void> _fetchConfigs() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await http.get(Uri.parse(firebaseUrl));
+      if (response.statusCode == 200 && response.body != 'null') {
+        final data = json.decode(response.body);
+        List<dynamic> loadedConfigs = [];
+
+        if (data is List) {
+          loadedConfigs = data.where((item) => item != null && item['active'] == true).toList();
+        } else if (data is Map) {
+          data.forEach((key, value) {
+            if (value != null && value['active'] == true) {
+              loadedConfigs.add(value);
             }
           });
         }
-      },
-    );
-    v2ray.initializeV2Ray();
+
+        setState(() {
+          _configs = loadedConfigs;
+          _isLoading = false;
+        });
+      } else {
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      debugPrint("خطا در دریافت سرورها: $e");
+      setState(() => _isLoading = false);
+    }
   }
 
-  String _formatSpeed(int bytesPerSecond) {
-    if (bytesPerSecond < 1024) return "$bytesPerSecond B/s";
-    if (bytesPerSecond < 1024 * 1024) return "${(bytesPerSecond / 1024).toStringAsFixed(1)} KB/s";
-    return "${(bytesPerSecond / (1024 * 1024)).toStringAsFixed(2)} MB/s";
-  }
+  // ۳. مدیریت اتصال و قطع اتصال
+  Future<void> _toggleConnect(Map<String, dynamic> item) async {
+    final String configUrl = item['config'] ?? '';
+    final String configId = item['id']?.toString() ?? item['name'];
 
-  void _showExpiredDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('پایان اعتبار'),
-        content: const Text('حجم حساب شما به پایان رسیده است.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('تایید'),
-          )
-        ],
-      ),
-    );
-  }
+    if (_isConnected && _connectedConfigId == configId) {
+      // قطع اتصال
+      await flutterV2ray.stopV2Ray();
+      setState(() {
+        _isConnected = false;
+        _connectedConfigId = null;
+      });
+      return;
+    }
 
-  void _toggleConnect() async {
-    if (isConnected) {
-      await v2ray.stopV2Ray();
-    } else {
-      if (selectedServer == null) return;
-      if (await v2ray.requestPermission()) {
-        await v2ray.startV2Ray(
-          remark: selectedServer!['name'],
-          config: selectedServer!['config'],
+    // بررسی مجوز VPN
+    if (await flutterV2ray.requestPermission()) {
+      try {
+        V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
+        await flutterV2ray.startV2Ray(
+          remark: item['name'] ?? parser.remark,
+          config: parser.getFullConfiguration(),
+          proxyOnly: false,
+        );
+        setState(() {
+          _isConnected = true;
+          _connectedConfigId = configId;
+        });
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در قالب کانفیگ: $e')),
         );
       }
     }
@@ -130,228 +137,74 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    double usedGB = usedBytes / (1024 * 1024 * 1024);
-    
     return Scaffold(
       appBar: AppBar(
-        title: const Text('V2Ray PRO', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          children: [
-            // انتخاب سرور
-            InkWell(
-              onTap: () async {
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ServerListScreen(servers: servers, v2ray: v2ray),
-                  ),
-                );
-                if (result != null) {
-                  setState(() => selectedServer = result);
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF141221),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white10),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(selectedServer?['name'] ?? 'انتخاب سرور'),
-                    const Icon(Icons.arrow_forward_ios, size: 16),
-                  ],
-                ),
-              ),
-            ),
-            const Spacer(),
-            
-            // دکمه اتصال
-            GestureDetector(
-              onTap: _toggleConnect,
-              child: Container(
-                width: 130,
-                height: 130,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isConnected ? const Color(0xFF0B3826) : const Color(0xFF2E1065),
-                  border: Border.all(
-                    color: isConnected ? const Color(0xFF00FF9D) : const Color(0xFFA855F7),
-                    width: 3,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: isConnected ? const Color(0xFF00FF9D).withOpacity(0.3) : const Color(0xFFA855F7).withOpacity(0.3),
-                      blurRadius: 25,
-                    )
-                  ],
-                ),
-                child: Icon(
-                  Icons.power_settings_new,
-                  size: 50,
-                  color: isConnected ? const Color(0xFF00FF9D) : const Color(0xFFA855F7),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              isConnected ? 'متصل شد' : 'آماده اتصال',
-              style: TextStyle(
-                color: isConnected ? const Color(0xFF00FF9D) : Colors.grey,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const Spacer(),
-
-            // نمایش سرعت آپلود و دانلود
-            Row(
-              children: [
-                Expanded(child: _speedCard('سرعت دانلود', downloadSpeed, const Color(0xFF00FF9D))),
-                const SizedBox(width: 10),
-                Expanded(child: _speedCard('سرعت آپلود', uploadSpeed, const Color(0xFFA855F7))),
-              ],
-            ),
-            const SizedBox(height: 10),
-
-            // نمایش حجم باقی مانده / مصرفی
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF141221),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  Column(
-                    children: [
-                      const Text('حجم باقی‌مانده', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                      const SizedBox(height: 4),
-                      Text(
-                        limitGB == 0 ? '∞ نامحدود' : '${(limitGB - usedGB).toStringAsFixed(2)} GB',
-                        style: const TextStyle(color: Color(0xFF00FF9D), fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                  Column(
-                    children: [
-                      const Text('مصرف شده', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${usedGB.toStringAsFixed(2)} GB',
-                        style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _speedCard(String title, String value, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF141221),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Column(
-        children: [
-          Text(title, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-          const SizedBox(height: 4),
-          Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
+        title: const Text('لیست سرورها', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _fetchConfigs,
+          ),
         ],
       ),
-    );
-  }
-}
-
-// صفحه لیست سرورها به همراه گرفتن پینگ واقعی خودکار
-class ServerListScreen extends StatefulWidget {
-  final List<Map<String, dynamic>> servers;
-  final FlutterV2ray v2ray;
-
-  const ServerListScreen({Key? key, required this.servers, required this.v2ray}) : super(key: key);
-
-  @override
-  State<ServerListScreen> createState() => _ServerListScreenState();
-}
-
-class _ServerListScreenState extends State<ServerListScreen> {
-  Map<int, int> serverPings = {};
-  Map<int, bool> isLoading = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _getPings();
-  }
-
-  // گرفتن پینگ واقعی بر اساس اینترنت فعلی کاربر
-  Future<void> _getPings() async {
-    for (var server in widget.servers) {
-      int id = server['id'];
-      setState(() => isLoading[id] = true);
-
-      try {
-        final delay = await widget.v2ray.getServerDelay(config: server['config']);
-        if (mounted) {
-          setState(() {
-            serverPings[id] = delay;
-            isLoading[id] = false;
-          });
-        }
-      } catch (_) {
-        if (mounted) {
-          setState(() {
-            serverPings[id] = -1;
-            isLoading[id] = false;
-          });
-        }
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('انتخاب سرور')),
-      body: ListView.builder(
-        itemCount: widget.servers.length,
-        itemBuilder: (context, index) {
-          final server = widget.servers[index];
-          final id = server['id'];
-          final ping = serverPings[id];
-          final loading = isLoading[id] ?? true;
-
-          return ListTile(
-            title: Text(server['name']),
-            trailing: loading
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : Text(
-                    ping == null || ping == -1 ? 'Timeout ❌' : '$ping ms',
-                    style: TextStyle(
-                      color: (ping ?? 999) < 300 ? Colors.green : Colors.red,
-                      fontWeight: FontWeight.bold,
-                    ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: Colors.indigoAccent))
+          : _configs.isEmpty
+              ? const Center(
+                  child: Text(
+                    'هیچ سرور فعالی در پنل پیدا نشد!',
+                    style: TextStyle(color: Colors.slate400),
                   ),
-            onTap: () => Navigator.pop(context, server),
-          );
-        },
-      ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: _configs.length,
+                  itemBuilder: (context, index) {
+                    final item = _configs[index];
+                    final String configId = item['id']?.toString() ?? item['name'];
+                    final bool isThisConnected = _isConnected && _connectedConfigId == configId;
+
+                    return Card(
+                      color: const Color(0xFF1E293B),
+                      margin: const EdgeInsets.only(bottom: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: BorderSide(
+                          color: isThisConnected ? Colors.emerald : Colors.transparent,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        leading: Text(
+                          item['flag'] ?? '🌐',
+                          style: const TextStyle(fontSize: 28),
+                        ),
+                        title: Text(
+                          item['name'] ?? 'سرور V2Ray',
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          item['config'] ?? '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.slate400, fontSize: 12),
+                        ),
+                        trailing: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isThisConnected ? Colors.rose : Colors.indigoAccent,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          onPressed: () => _toggleConnect(item),
+                          child: Text(
+                            isThisConnected ? 'قطع اتصال' : 'اتصال',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
     );
   }
 }
