@@ -1,35 +1,29 @@
 name: v2ray_app
 description: "A Flutter V2Ray / Xray VPN Client Application"
-publish_to: 'none' # جلوگیری از انتشار تصادفی روی pub.dev
+publish_to: 'none'
 
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.1.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
 
-  # پکیج اصلی اتصال و مدیریت هسته V2Ray / Xray
-  flutter_v2ray: ^0.8.0
+  # پکیج اصلی V2Ray/Xray با پشتیبانی کامل از VLESS, Reality, gRPC
+  flutter_v2ray: ^1.0.10
 
-  # پکیج ارتباطات HTTP و دریافت آنلاین سرورها
+  # دریافت سرورها از فایربیس
   http: ^1.2.0
 
-  # پکیج‌های کمکی طراحی UI و آیکون‌ها
   cupertino_icons: ^1.0.6
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  # لینتر استاندارد فلاتر
   flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
-
-  # در صورت استفاده از فونت یا تصاویر محلی می‌توانید در این بخش اضافه کنید
-  # assets:
-  #   - assets/
