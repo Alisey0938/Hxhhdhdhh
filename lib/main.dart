@@ -36,7 +36,7 @@ class ServerListScreen extends StatefulWidget {
 }
 
 class _ServerListScreenState extends State<ServerListScreen> {
-  // 🔴 آدرس دیتابیس فایربیس خود را دقیقاً در سطر زیر جایگزین کنید:
+  // آدرس دیتابیس اختصاصی شما
   final String firebaseUrl = "https://pane-dcc9a-default-rtdb.firebaseio.com/configs.json";
 
   late FlutterV2ray flutterV2ray;
@@ -153,7 +153,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
               ? const Center(
                   child: Text(
                     'هیچ سرور فعالی در پنل پیدا نشد!',
-                    style: TextStyle(color: Colors.slate400),
+                    style: TextStyle(color: Colors.grey),
                   ),
                 )
               : ListView.builder(
@@ -170,7 +170,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                         side: BorderSide(
-                          color: isThisConnected ? Colors.emerald : Colors.transparent,
+                          color: isThisConnected ? Colors.green : Colors.transparent,
                           width: 1.5,
                         ),
                       ),
@@ -188,11 +188,11 @@ class _ServerListScreenState extends State<ServerListScreen> {
                           item['config'] ?? '',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.slate400, fontSize: 12),
+                          style: const TextStyle(color: Colors.grey, fontSize: 12),
                         ),
                         trailing: ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: isThisConnected ? Colors.rose : Colors.indigoAccent,
+                            backgroundColor: isThisConnected ? Colors.redAccent : Colors.indigoAccent,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                           onPressed: () => _toggleConnect(item),
