@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_v2ray/flutter_v2ray.dart';
+import 'package:flutter_v2ray_client/flutter_v2ray.dart';
 import 'package:http/http.dart' as http;
 
 void main() {
@@ -13,7 +13,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'V2Ray Xray Client',
+      title: 'Xray v26 Client',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF0F172A),
@@ -38,7 +38,7 @@ class ServerListScreen extends StatefulWidget {
 class _ServerListScreenState extends State<ServerListScreen> {
   final String firebaseUrl = "https://pane-dcc9a-default-rtdb.firebaseio.com/configs.json";
 
-  late FlutterV2ray flutterV2ray;
+  late V2ray v2ray;
   List<dynamic> _configs = [];
   final Map<String, int> _pings = {};
   final Map<String, bool> _pingLoading = {};
@@ -54,24 +54,27 @@ class _ServerListScreenState extends State<ServerListScreen> {
     _fetchConfigs();
   }
 
-  // ۱. مقداردهی اولیه هسته Xray/V2Ray
-  void _initV2Ray() {
-    flutterV2ray = FlutterV2ray(
+  // ۱. مقداردهی اولیه هسته Xray v26
+  void _initV2Ray() async {
+    v2ray = V2ray(
       onStatusChanged: (status) {
         setState(() {
           _statusText = status.state;
-          _isConnected = status.state == 'CONNECTED';
-          if (!_isConnected && status.state == 'DISCONNECTED') {
+          _isConnected = status.state.toUpperCase() == 'CONNECTED';
+          if (!_isConnected && status.state.toUpperCase() == 'DISCONNECTED') {
             _connectedConfigId = null;
           }
         });
       },
     );
 
-    flutterV2ray.initializeV2Ray();
+    await v2ray.initialize(
+      notificationIconResourceType: "mipmap",
+      notificationIconResourceName: "ic_launcher",
+    );
   }
 
-  // ۲. دریافت سرورها از فایربیس
+  // ۲. دریافت سرورها از آنلاین پنل
   Future<void> _fetchConfigs() async {
     setState(() => _isLoading = true);
     try {
@@ -100,19 +103,19 @@ class _ServerListScreenState extends State<ServerListScreen> {
         setState(() => _isLoading = false);
       }
     } catch (e) {
-      debugPrint("خطا در دریافت لیست کانفیگ‌ها: $e");
+      debugPrint("خطا در دریافت سرورها: $e");
       setState(() => _isLoading = false);
     }
   }
 
-  // ۳. سنجش پینگ تمام کانفیگ‌ها
+  // ۳. تست پینگ همه کانفیگ‌ها
   Future<void> _testAllPings() async {
     for (var item in _configs) {
       _testSinglePing(item);
     }
   }
 
-  // سنجش پینگ دقیق برای تک‌تک کانفیگ‌ها
+  // محاسبه پینگ واقعی توسط هسته Xray بر اساس تست gstatic (معیار v2rayNG)
   Future<void> _testSinglePing(Map<String, dynamic> item) async {
     final String configUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name'];
@@ -124,12 +127,11 @@ class _ServerListScreenState extends State<ServerListScreen> {
     });
 
     try {
-      V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
+      V2RayURL parser = V2ray.parseFromURL(configUrl);
       
-      // محاسبه پینگ واقعی از طریق هسته Xray با ارسال URL کانفیگ
-      int delay = await flutterV2ray.getServerDelay(
+      int delay = await v2ray.getServerDelay(
         config: parser.getFullConfiguration(),
-        url: 'https://www.gstatic.com/generate_204', // استاندارد تست پینگ v2rayNG
+        url: 'https://www.gstatic.com/generate_204',
       );
 
       setState(() {
@@ -144,13 +146,13 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // ۴. مدیریت اتصال و قطع اتصال
+  // ۴. مدیریت اتصال و قطع اتصال (VPN سراسری)
   Future<void> _toggleConnect(Map<String, dynamic> item) async {
     final String configUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name'];
 
     if (_isConnected && _connectedConfigId == configId) {
-      await flutterV2ray.stopV2Ray();
+      await v2ray.stopV2Ray();
       setState(() {
         _isConnected = false;
         _connectedConfigId = null;
@@ -159,17 +161,17 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
 
     if (_isConnected) {
-      await flutterV2ray.stopV2Ray();
+      await v2ray.stopV2Ray();
     }
 
-    if (await flutterV2ray.requestPermission()) {
+    if (await v2ray.requestPermission()) {
       try {
-        V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
+        V2RayURL parser = V2ray.parseFromURL(configUrl);
 
-        await flutterV2ray.startV2Ray(
+        await v2ray.startV2Ray(
           remark: item['name'] ?? parser.remark,
           config: parser.getFullConfiguration(),
-          proxyOnly: false, // عبور تمام ترافیک دستگاه (VPN کامل)
+          proxyOnly: false, // عبور تمام ترافیک گوشی (اینستاگرام، تلگرام و...)
         );
 
         setState(() {
@@ -178,14 +180,14 @@ class _ServerListScreenState extends State<ServerListScreen> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('خطا در بارگذاری کانفیگ: $e')),
+            SnackBar(content: Text('خطا در اتصال Xray: $e')),
           );
         }
       }
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('مجوز VPN داده نشد.')),
+          const SnackBar(content: Text('مجوز VPN توسط کاربر داده نشد.')),
         );
       }
     }
@@ -202,7 +204,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('لیست سرورها', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text('سرورهای Xray v26', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
             icon: const Icon(Icons.speed),
@@ -277,7 +279,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                 children: [
                                   Expanded(
                                     child: Text(
-                                      item['name'] ?? 'سرور V2Ray',
+                                      item['name'] ?? 'سرور Xray',
                                       style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                                     ),
                                   ),
