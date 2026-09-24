@@ -40,8 +40,8 @@ class _ServerListScreenState extends State<ServerListScreen> {
 
   late FlutterV2ray flutterV2ray;
   List<dynamic> _configs = [];
-  Map<String, int> _pings = {}; // ذخیره پینگ هر کانفیگ
-  Map<String, bool> _pingLoading = {}; // وضعیت در حال تست بودن پینگ
+  Map<String, int> _pings = {};
+  Map<String, bool> _pingLoading = {};
   bool _isLoading = true;
   String? _connectedConfigId;
   bool _isConnected = false;
@@ -69,7 +69,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
     flutterV2ray.initializeV2Ray();
   }
 
-  // دریافت کانفیگ‌ها و شروع تست پینگ خودکار
   Future<void> _fetchConfigs() async {
     setState(() => _isLoading = true);
     try {
@@ -93,7 +92,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
           _isLoading = false;
         });
 
-        // گرفتن پینگ خودکار پس از دریافت لیست
         _testAllPings();
       } else {
         setState(() => _isLoading = false);
@@ -104,14 +102,12 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // تست پینگ خودکار برای تمامی کانفیگ‌ها
   Future<void> _testAllPings() async {
     for (var item in _configs) {
       _testSinglePing(item);
     }
   }
 
-  // محاسبه پینگ یک کانفیگ مشخص
   Future<void> _testSinglePing(Map<String, dynamic> item) async {
     final String configUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name'];
@@ -122,8 +118,8 @@ class _ServerListScreenState extends State<ServerListScreen> {
 
     try {
       V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
-      // محاسبه پینگ واقعی سرور
-      int delay = await flutterV2ray.getConnectedServerDelay(parser.getFullConfiguration());
+      // استفاده از متد صحیح برای پینگ قبل از اتصال
+      int delay = await flutterV2ray.getServerDelay(config: parser.getFullConfiguration());
 
       setState(() {
         _pings[configId] = delay;
@@ -131,7 +127,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
       });
     } catch (e) {
       setState(() {
-        _pings[configId] = -1; // -1 به معنی تایم‌اوت یا خطا
+        _pings[configId] = -1;
         _pingLoading[configId] = false;
       });
     }
@@ -177,7 +173,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // رنگ‌بندی پینگ بر اساس مقدار آن
   Color _getPingColor(int ping) {
     if (ping <= 0) return Colors.redAccent;
     if (ping < 300) return Colors.greenAccent;
@@ -204,7 +199,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
       ),
       body: Column(
         children: [
-          // نوار وضعیت اتصال
           Container(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
             color: _isConnected ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2),
@@ -268,7 +262,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                       style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                                     ),
                                   ),
-                                  // بخش نمایش پینگ
                                   isPingLoading
                                       ? const SizedBox(
                                           width: 12,
