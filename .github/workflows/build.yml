@@ -21,20 +21,21 @@ jobs:
     - name: Set up Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.19.x'
+        flutter-version: '3.10.6'
         channel: 'stable'
 
-    - name: Create Android Project
+    - name: Recreate Android Project
       run: |
+        rm -rf android
         flutter create . --platforms=android --org=com.v2ray.app
         echo "android.useAndroidX=true" >> android/gradle.properties
         echo "android.enableJetifier=true" >> android/gradle.properties
 
-    - name: Fix Min SDK Version
+    - name: Set Min SDK Version
       run: |
         sed -i 's/minSdkVersion .*/minSdkVersion 21/g' android/app/build.gradle
 
-    - name: Install Dependencies
+    - name: Get Dependencies
       run: flutter pub get
 
     - name: Build APK
