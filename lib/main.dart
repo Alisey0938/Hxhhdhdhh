@@ -13,7 +13,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'V2Ray App',
+      title: 'V2Ray Xray Client',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF0F172A),
@@ -40,8 +40,8 @@ class _ServerListScreenState extends State<ServerListScreen> {
 
   late FlutterV2ray flutterV2ray;
   List<dynamic> _configs = [];
-  Map<String, int> _pings = {};
-  Map<String, bool> _pingLoading = {};
+  final Map<String, int> _pings = {};
+  final Map<String, bool> _pingLoading = {};
   bool _isLoading = true;
   String? _connectedConfigId;
   bool _isConnected = false;
@@ -54,6 +54,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
     _fetchConfigs();
   }
 
+  // ۱. مقداردهی اولیه هسته Xray/V2Ray
   void _initV2Ray() {
     flutterV2ray = FlutterV2ray(
       onStatusChanged: (status) {
@@ -66,9 +67,11 @@ class _ServerListScreenState extends State<ServerListScreen> {
         });
       },
     );
+
     flutterV2ray.initializeV2Ray();
   }
 
+  // ۲. دریافت سرورها از فایربیس
   Future<void> _fetchConfigs() async {
     setState(() => _isLoading = true);
     try {
@@ -97,20 +100,24 @@ class _ServerListScreenState extends State<ServerListScreen> {
         setState(() => _isLoading = false);
       }
     } catch (e) {
-      debugPrint("خطا در دریافت سرورها: $e");
+      debugPrint("خطا در دریافت لیست کانفیگ‌ها: $e");
       setState(() => _isLoading = false);
     }
   }
 
+  // ۳. سنجش پینگ تمام کانفیگ‌ها
   Future<void> _testAllPings() async {
     for (var item in _configs) {
       _testSinglePing(item);
     }
   }
 
+  // سنجش پینگ دقیق برای تک‌تک کانفیگ‌ها
   Future<void> _testSinglePing(Map<String, dynamic> item) async {
     final String configUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name'];
+
+    if (configUrl.isEmpty) return;
 
     setState(() {
       _pingLoading[configId] = true;
@@ -118,8 +125,12 @@ class _ServerListScreenState extends State<ServerListScreen> {
 
     try {
       V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
-      // استفاده از متد صحیح برای پینگ قبل از اتصال
-      int delay = await flutterV2ray.getServerDelay(config: parser.getFullConfiguration());
+      
+      // محاسبه پینگ واقعی از طریق هسته Xray با ارسال URL کانفیگ
+      int delay = await flutterV2ray.getServerDelay(
+        config: parser.getFullConfiguration(),
+        url: 'https://www.gstatic.com/generate_204', // استاندارد تست پینگ v2rayNG
+      );
 
       setState(() {
         _pings[configId] = delay;
@@ -133,6 +144,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
+  // ۴. مدیریت اتصال و قطع اتصال
   Future<void> _toggleConnect(Map<String, dynamic> item) async {
     final String configUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name'];
@@ -157,7 +169,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
         await flutterV2ray.startV2Ray(
           remark: item['name'] ?? parser.remark,
           config: parser.getFullConfiguration(),
-          proxyOnly: false,
+          proxyOnly: false, // عبور تمام ترافیک دستگاه (VPN کامل)
         );
 
         setState(() {
@@ -166,17 +178,23 @@ class _ServerListScreenState extends State<ServerListScreen> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('خطا در اتصال: $e')),
+            SnackBar(content: Text('خطا در بارگذاری کانفیگ: $e')),
           );
         }
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('مجوز VPN داده نشد.')),
+        );
       }
     }
   }
 
   Color _getPingColor(int ping) {
     if (ping <= 0) return Colors.redAccent;
-    if (ping < 300) return Colors.greenAccent;
-    if (ping < 600) return Colors.orangeAccent;
+    if (ping < 350) return Colors.greenAccent;
+    if (ping < 700) return Colors.orangeAccent;
     return Colors.redAccent;
   }
 
@@ -199,6 +217,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
       ),
       body: Column(
         children: [
+          // نوار وضعیت
           Container(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
             color: _isConnected ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2),
