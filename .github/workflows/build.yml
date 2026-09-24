@@ -23,16 +23,13 @@ jobs:
       with:
         channel: 'stable'
 
-    # ایجاد خودکار ساختار اندروید نسخه جدید (v2 Embedding)
     - name: Generate Fresh Android Structure
       run: |
         rm -rf android
         flutter create . --platforms=android --org=com.v2ray.app -i swift -a kotlin
 
-    # تنظیم حداقل نسخه SDK مورد نیاز برای v2ray
     - name: Fix Min SDK and Properties
       run: |
-        sed -i 's/minSdkVersion .*/minSdkVersion 21/g' android/app/build.gradle
         echo "android.useAndroidX=true" >> android/gradle.properties
         echo "android.enableJetifier=true" >> android/gradle.properties
 
