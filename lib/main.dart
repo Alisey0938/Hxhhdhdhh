@@ -18,8 +18,8 @@ class MyApp extends StatelessWidget {
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF090B10), // مشکی عمیق آبسیدین
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF10B981), // سبز یاقوتی (Emerald)
-          secondary: Color(0xFF8B5CF6), // بنفش نئونی (Neon Purple)
+          primary: Color(0xFF10B981), // سبز یاقوتی
+          secondary: Color(0xFF8B5CF6), // بنفش نئونی
           surface: Color(0xFF131722), // گرانیتی تیره
         ),
         appBarTheme: const AppBarTheme(
@@ -242,7 +242,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
               'XRAY ULTRA',
               style: TextStyle(
                 fontSize: 20,
-                fontWeight: FontWeight.black,
+                fontWeight: FontWeight.w900,
                 letterSpacing: 1.5,
                 color: Colors.white,
               ),
@@ -471,7 +471,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                   isThisConnected ? 'قطع' : 'اتصال',
                                   style: const TextStyle(
                                     color: Colors.white,
-                                    fontWeight: FontWeight.black,
+                                    fontWeight: FontWeight.w900,
                                     fontSize: 13,
                                   ),
                                 ),
