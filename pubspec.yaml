@@ -1,5 +1,5 @@
 name: v2ray_app
-description: "A Flutter V2Ray / Xray VPN Client Application"
+description: "A Flutter Xray v26 VPN Client Application"
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -11,8 +11,8 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # پکیج اصلی V2Ray/Xray با پشتیبانی کامل از VLESS, Reality, gRPC
-  flutter_v2ray: ^1.0.10
+  # پکیج پیشرفته Xray v26 با پشتیبانی از Reality, XHTTP, gRPC و Native TUN
+  flutter_v2ray_client: ^3.5.0
 
   # دریافت سرورها از فایربیس
   http: ^1.2.0
