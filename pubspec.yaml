@@ -11,6 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_v2ray: ^1.0.10
+  http: ^1.2.0
 
 dev_dependencies:
   flutter_test:
