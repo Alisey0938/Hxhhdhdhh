@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_v2ray_client/flutter_v2ray.dart';
 import 'package:http/http.dart' as http;
@@ -16,7 +17,7 @@ class MyApp extends StatelessWidget {
       title: 'Xray Ultra Client',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF090B10), // مشکی عمیق آبسیدین
+        scaffoldBackgroundColor: const Color(0xFF090B10), // مشکی عمیق
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF10B981), // سبز یاقوتی
           secondary: Color(0xFF8B5CF6), // بنفش نئونی
@@ -47,9 +48,9 @@ class _ServerListScreenState extends State<ServerListScreen> {
   List<dynamic> _configs = [];
   final Map<String, int> _pings = {};
   final Map<String, bool> _pingLoading = {};
-  
+
   bool _isLoading = true;
-  bool _isConnectingProcess = false; // برای جلوگیری از کلیک‌های متوالی و کرش
+  bool _isConnectingProcess = false;
   String? _connectedConfigId;
   bool _isConnected = false;
   String _statusText = "DISCONNECTED";
@@ -61,7 +62,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
     _fetchConfigs();
   }
 
-  // ۱. مقداردهی اولیه هسته Xray v26
+  // ۱. مقداردهی اولیه هسته Xray
   void _initV2Ray() async {
     v2ray = V2ray(
       onStatusChanged: (status) {
@@ -83,7 +84,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
     );
   }
 
-  // ۲. دریافت لیست سرورها
+  // ۲. دریافت لیست سرورها از فایربیس
   Future<void> _fetchConfigs() async {
     setState(() => _isLoading = true);
     try {
@@ -117,7 +118,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // ۳. تست پینگ
+  // ۳. سنجش پینگ دقیق (سازگار با وای‌فای و سیم‌کارت)
   Future<void> _testAllPings() async {
     for (var item in _configs) {
       _testSinglePing(item);
@@ -137,11 +138,26 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
 
     try {
+      // استفاده از متد هیبریدی Xray + سوکت مستقیم TCP جهت تطابق دقیق با شبکه وای‌فای و اینترنت همراه
       V2RayURL parser = V2ray.parseFromURL(configUrl);
+      
       int delay = await v2ray.getServerDelay(
         config: parser.getFullConfiguration(),
-        url: 'https://www.gstatic.com/generate_204',
+        url: 'https://1.1.1.1', // IP مستقیم جهت رد شدن از تایم‌اوت‌های DNS وای‌فای
       );
+
+      // در صورت تایم‌اوت شدن از طریق سوکت TCP آدرس سرور اقدام می‌شود
+      if (delay <= 0) {
+        final stopwatch = Stopwatch()..start();
+        final socket = await Socket.connect(
+          parser.address,
+          int.tryParse(parser.port) ?? 443,
+          timeout: const Duration(seconds: 3),
+        );
+        stopwatch.stop();
+        delay = stopwatch.elapsedMilliseconds;
+        await socket.close();
+      }
 
       if (mounted) {
         setState(() {
@@ -159,42 +175,55 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // ۴. مدیریت اتصال ایمن و بدون کرش با قابلیت پشتیبانی از XHTTP
+  // ۴. مدیریت اتصال و سوییچ سرور
   Future<void> _toggleConnect(Map<String, dynamic> item) async {
-    if (_isConnectingProcess) return; // جلوگیری از دبل کلیک
-    
+    if (_isConnectingProcess) return;
+
     final String configUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name'];
 
+    // دکمه قطع اتصال برای سرور متصل
+    if (_isConnected && _connectedConfigId == configId) {
+      setState(() => _isConnectingProcess = true);
+      try {
+        await v2ray.stopV2Ray();
+      } catch (e) {
+        debugPrint("خطا در قطع اتصال: $e");
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isConnected = false;
+            _connectedConfigId = null;
+            _statusText = "DISCONNECTED"; // تغییر آنی رنگ و وضعیت باکس هدر به قرمز
+            _isConnectingProcess = false;
+          });
+        }
+      }
+      return;
+    }
+
+    // اگر متصل است و روی سرور دیگری زده شد، اجازه سوییچ مستقیم داده نمیشود
+    if (_isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('لطفاً ابتدا اتصال سرور فعال را قطع کنید.'),
+          backgroundColor: Colors.amber,
+        ),
+      );
+      return;
+    }
+
+    // برقراری اتصال جدید
     setState(() => _isConnectingProcess = true);
 
     try {
-      // اگر روی همان سرور متصل کلیک شد -> قطع اتصال
-      if (_isConnected && _connectedConfigId == configId) {
-        await v2ray.stopV2Ray();
-        setState(() {
-          _isConnected = false;
-          _connectedConfigId = null;
-          _statusText = "DISCONNECTED";
-        });
-        setState(() => _isConnectingProcess = false);
-        return;
-      }
-
-      // اگر به سرور دیگری متصل بود -> ابتدا قطع کامل اتصال قبلی (با تاخیر کوتاه برای آزادسازی نیتیو)
-      if (_isConnected || _statusText != "DISCONNECTED") {
-        await v2ray.stopV2Ray();
-        await Future.delayed(const Duration(milliseconds: 300)); // تاخیر حیاتی برای جلوگیری از کرش سوکت
-      }
-
-      // درخواست مجوز VPN
       if (await v2ray.requestPermission()) {
         V2RayURL parser = V2ray.parseFromURL(configUrl);
 
         await v2ray.startV2Ray(
           remark: item['name'] ?? parser.remark,
           config: parser.getFullConfiguration(),
-          proxyOnly: false, // ارسال کل ترافیک گوشی (اینستاگرام، تلگرام و...)
+          proxyOnly: false,
         );
 
         setState(() {
@@ -224,7 +253,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
 
   Color _getPingColor(int ping) {
     if (ping <= 0) return Colors.redAccent;
-    if (ping < 300) return const Color(0xFF10B981); // یاقوتی
+    if (ping < 300) return const Color(0xFF10B981);
     if (ping < 600) return Colors.amber;
     return Colors.redAccent;
   }
@@ -252,7 +281,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.speed_rounded, color: Color(0xFF8B5CF6)),
-            tooltip: 'تست پینگ',
+            tooltip: 'تست پینگ مجدد',
             onPressed: _testAllPings,
           ),
           IconButton(
@@ -263,7 +292,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
       ),
       body: Column(
         children: [
-          // کارت هدر وضعیت اتصال مدرن
+          // باکس هدر نمایش وضعیت اتصال
           Container(
             width: double.infinity,
             margin: const EdgeInsets.all(16),
@@ -271,15 +300,15 @@ class _ServerListScreenState extends State<ServerListScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: _isConnected
-                    ? [const Color(0xFF064E3B), const Color(0xFF10B981)]
-                    : [const Color(0xFF1E1B4B), const Color(0xFF8B5CF6)],
+                    ? [const Color(0xFF064E3B), const Color(0xFF10B981)] // سبز یاقوتی در زمان اتصال
+                    : [const Color(0xFF451225), const Color(0xFFDC2626)], // قرمز/شرابی در زمان قطع اتصال
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                  color: (_isConnected ? const Color(0xFF10B981) : const Color(0xFF8B5CF6)).withOpacity(0.3),
+                  color: (_isConnected ? const Color(0xFF10B981) : const Color(0xFFDC2626)).withOpacity(0.35),
                   blurRadius: 20,
                   spreadRadius: 2,
                 ),
@@ -334,7 +363,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
             ),
           ),
 
-          // عنوان لیست سرورها
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             child: Row(
@@ -373,10 +401,13 @@ class _ServerListScreenState extends State<ServerListScreen> {
                           final bool isPingLoading = _pingLoading[configId] ?? false;
                           final int ping = _pings[configId] ?? 0;
 
+                          // غیرفعال کردن دکمه سایر سرورها در زمان متصل بودن
+                          final bool isDisabledButton = _isConnected && !isThisConnected;
+
                           return Container(
                             margin: const EdgeInsets.only(bottom: 12),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF131722), // گرانیتی
+                              color: const Color(0xFF131722),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
                                 color: isThisConnected ? const Color(0xFF10B981) : Colors.white.withOpacity(0.08),
@@ -409,15 +440,14 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                   Expanded(
                                     child: Text(
                                       item['name'] ?? 'سرور Xray',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontWeight: FontWeight.bold,
-                                        color: Colors.white,
+                                        color: isDisabledButton ? Colors.white38 : Colors.white,
                                         fontSize: 15,
                                       ),
                                     ),
                                   ),
                                   const SizedBox(width: 6),
-                                  // نمایش مقدار پینگ
                                   isPingLoading
                                       ? const SizedBox(
                                           width: 12,
@@ -451,14 +481,16 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                   item['config'] ?? '',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11),
+                                  style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 11),
                                 ),
                               ),
                               trailing: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: isThisConnected
-                                      ? Colors.redAccent.withOpacity(0.8)
-                                      : const Color(0xFF8B5CF6),
+                                      ? Colors.redAccent.withOpacity(0.9)
+                                      : isDisabledButton
+                                          ? Colors.grey.withOpacity(0.2)
+                                          : const Color(0xFF8B5CF6),
                                   elevation: isThisConnected ? 0 : 4,
                                   shadowColor: const Color(0xFF8B5CF6).withOpacity(0.5),
                                   shape: RoundedRectangleBorder(
@@ -466,11 +498,13 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                   ),
                                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                                 ),
-                                onPressed: _isConnectingProcess ? null : () => _toggleConnect(item),
+                                onPressed: (_isConnectingProcess || isDisabledButton)
+                                    ? null
+                                    : () => _toggleConnect(item),
                                 child: Text(
                                   isThisConnected ? 'قطع' : 'اتصال',
-                                  style: const TextStyle(
-                                    color: Colors.white,
+                                  style: TextStyle(
+                                    color: isDisabledButton ? Colors.white38 : Colors.white,
                                     fontWeight: FontWeight.w900,
                                     fontSize: 13,
                                   ),
