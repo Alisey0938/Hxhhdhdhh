@@ -69,7 +69,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
         if (!mounted) return;
         final stateUpper = status.state.toUpperCase();
         
-        // همگام‌سازی مستقیم وضعیت با تغییرات هسته
         setState(() {
           _statusText = stateUpper;
           if (stateUpper == 'CONNECTED') {
@@ -178,18 +177,17 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // ۴. مدیریت اتصال و قطع اتصال دقیق
+  // ۴. مدیریت اتصال و قطع اتصال دقیق و بدون محدودیت دفعات
   Future<void> _toggleConnect(Map<String, dynamic> item) async {
     if (_isConnectingProcess) return;
 
     final String configUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name'];
 
-    // اقدام به قطع اتصال
+    // الف) اگر کاربر روی دکمه «قطع» کانفیگ جاری کلیک کرده باشد:
     if (_isConnected && _connectedConfigId == configId) {
       setState(() {
         _isConnectingProcess = true;
-        // تغییر آنی وضعیت محلی برای آپدیت UI قبل از پاسخ هسته
         _isConnected = false;
         _connectedConfigId = null;
         _statusText = "DISCONNECTED";
@@ -198,29 +196,33 @@ class _ServerListScreenState extends State<ServerListScreen> {
       try {
         await v2ray.stopV2Ray();
       } catch (e) {
-        debugPrint("خطا در قطع اتصال: $e");
+        debugPrint("خطا در قطع V2Ray: $e");
       } finally {
         if (mounted) {
           setState(() {
             _isConnectingProcess = false;
+            _isConnected = false;
+            _connectedConfigId = null;
+            _statusText = "DISCONNECTED";
           });
         }
       }
       return;
     }
 
-    // عدم اجازه سوییچ بدون قطع سرور قبلی
+    // ب) اگر سرور دیگری متصل باشد، اجازه اقدام به اتصال داده نمی‌شود
     if (_isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('لطفاً ابتدا اتصال سرور فعال را قطع کنید.'),
           backgroundColor: Colors.amber,
+          duration: Duration(seconds: 2),
         ),
       );
       return;
     }
 
-    // اقدام به اتصال جدید
+    // ج) شروع فرآیند اتصال به سرور جدید:
     setState(() => _isConnectingProcess = true);
 
     try {
@@ -233,11 +235,13 @@ class _ServerListScreenState extends State<ServerListScreen> {
           proxyOnly: false,
         );
 
-        setState(() {
-          _connectedConfigId = configId;
-          _isConnected = true;
-          _statusText = "CONNECTED";
-        });
+        if (mounted) {
+          setState(() {
+            _connectedConfigId = configId;
+            _isConnected = true;
+            _statusText = "CONNECTED";
+          });
+        }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -252,8 +256,11 @@ class _ServerListScreenState extends State<ServerListScreen> {
         );
       }
     } finally {
+      // ریسک‌زدایی کامل: تحت هر شرایطی (موفق، خطا یا لغو مجوز)، قفل پروسه باز می‌شود
       if (mounted) {
-        setState(() => _isConnectingProcess = false);
+        setState(() {
+          _isConnectingProcess = false;
+        });
       }
     }
   }
@@ -299,7 +306,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
       ),
       body: Column(
         children: [
-          // باکس وضعیت هدر (سبز در حالت متصل / قرمز در حالت قطع)
+          // کارت وضعیت هدر (سبز برای متصل / قرمز برای قطع)
           Container(
             width: double.infinity,
             margin: const EdgeInsets.all(16),
@@ -408,7 +415,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
                           final bool isPingLoading = _pingLoading[configId] ?? false;
                           final int ping = _pings[configId] ?? 0;
 
-                          // فقط زمانی که متصل هستیم و این آی‌دی با آی‌دی متصل فرق دارد غیرفعال می‌شود
+                          // تنها زمانی دکمه سایر سرورها غیرفعال است که اتصال فعال برقرار باشد
                           final bool isDisabledButton = _isConnected && !isThisConnected;
 
                           return Container(
