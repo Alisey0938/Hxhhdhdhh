@@ -138,20 +138,20 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
 
     try {
-      // استفاده از متد هیبریدی Xray + سوکت مستقیم TCP جهت تطابق دقیق با شبکه وای‌فای و اینترنت همراه
       V2RayURL parser = V2ray.parseFromURL(configUrl);
       
       int delay = await v2ray.getServerDelay(
         config: parser.getFullConfiguration(),
-        url: 'https://1.1.1.1', // IP مستقیم جهت رد شدن از تایم‌اوت‌های DNS وای‌فای
+        url: 'https://1.1.1.1',
       );
 
-      // در صورت تایم‌اوت شدن از طریق سوکت TCP آدرس سرور اقدام می‌شود
+      // در صورت عدم پاسخ از متد اول، استفاده از تست سوکت مستقیم
       if (delay <= 0) {
         final stopwatch = Stopwatch()..start();
+        final int targetPort = int.tryParse(parser.port.toString()) ?? 443;
         final socket = await Socket.connect(
           parser.address,
-          int.tryParse(parser.port) ?? 443,
+          targetPort,
           timeout: const Duration(seconds: 3),
         );
         stopwatch.stop();
@@ -194,7 +194,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
           setState(() {
             _isConnected = false;
             _connectedConfigId = null;
-            _statusText = "DISCONNECTED"; // تغییر آنی رنگ و وضعیت باکس هدر به قرمز
+            _statusText = "DISCONNECTED";
             _isConnectingProcess = false;
           });
         }
@@ -202,7 +202,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
       return;
     }
 
-    // اگر متصل است و روی سرور دیگری زده شد، اجازه سوییچ مستقیم داده نمیشود
+    // اگر متصل است و روی سرور دیگری زده شد
     if (_isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -300,8 +300,8 @@ class _ServerListScreenState extends State<ServerListScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: _isConnected
-                    ? [const Color(0xFF064E3B), const Color(0xFF10B981)] // سبز یاقوتی در زمان اتصال
-                    : [const Color(0xFF451225), const Color(0xFFDC2626)], // قرمز/شرابی در زمان قطع اتصال
+                    ? [const Color(0xFF064E3B), const Color(0xFF10B981)]
+                    : [const Color(0xFF451225), const Color(0xFFDC2626)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
