@@ -17,11 +17,11 @@ class MyApp extends StatelessWidget {
       title: 'Xray Ultra Client',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF090B10), // مشکی عمیق
+        scaffoldBackgroundColor: const Color(0xFF090B10),
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF10B981), // سبز یاقوتی
-          secondary: Color(0xFF8B5CF6), // بنفش نئونی
-          surface: Color(0xFF131722), // گرانیتی تیره
+          primary: Color(0xFF10B981),
+          secondary: Color(0xFF8B5CF6),
+          surface: Color(0xFF131722),
         ),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF131722),
@@ -68,10 +68,14 @@ class _ServerListScreenState extends State<ServerListScreen> {
       onStatusChanged: (status) {
         if (!mounted) return;
         final stateUpper = status.state.toUpperCase();
+        
+        // همگام‌سازی مستقیم وضعیت با تغییرات هسته
         setState(() {
           _statusText = stateUpper;
-          _isConnected = (stateUpper == 'CONNECTED');
-          if (stateUpper == 'DISCONNECTED') {
+          if (stateUpper == 'CONNECTED') {
+            _isConnected = true;
+          } else if (stateUpper == 'DISCONNECTED' || stateUpper == 'STOPPED') {
+            _isConnected = false;
             _connectedConfigId = null;
           }
         });
@@ -84,7 +88,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
     );
   }
 
-  // ۲. دریافت لیست سرورها از فایربیس
+  // ۲. دریافت لیست سرورها
   Future<void> _fetchConfigs() async {
     setState(() => _isLoading = true);
     try {
@@ -118,7 +122,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // ۳. سنجش پینگ دقیق (سازگار با وای‌فای و سیم‌کارت)
+  // ۳. سنجش پینگ دقیق
   Future<void> _testAllPings() async {
     for (var item in _configs) {
       _testSinglePing(item);
@@ -145,7 +149,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
         url: 'https://1.1.1.1',
       );
 
-      // در صورت عدم پاسخ از متد اول، استفاده از تست سوکت مستقیم
       if (delay <= 0) {
         final stopwatch = Stopwatch()..start();
         final int targetPort = int.tryParse(parser.port.toString()) ?? 443;
@@ -175,16 +178,23 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // ۴. مدیریت اتصال و سوییچ سرور
+  // ۴. مدیریت اتصال و قطع اتصال دقیق
   Future<void> _toggleConnect(Map<String, dynamic> item) async {
     if (_isConnectingProcess) return;
 
     final String configUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name'];
 
-    // دکمه قطع اتصال برای سرور متصل
+    // اقدام به قطع اتصال
     if (_isConnected && _connectedConfigId == configId) {
-      setState(() => _isConnectingProcess = true);
+      setState(() {
+        _isConnectingProcess = true;
+        // تغییر آنی وضعیت محلی برای آپدیت UI قبل از پاسخ هسته
+        _isConnected = false;
+        _connectedConfigId = null;
+        _statusText = "DISCONNECTED";
+      });
+
       try {
         await v2ray.stopV2Ray();
       } catch (e) {
@@ -192,9 +202,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
       } finally {
         if (mounted) {
           setState(() {
-            _isConnected = false;
-            _connectedConfigId = null;
-            _statusText = "DISCONNECTED";
             _isConnectingProcess = false;
           });
         }
@@ -202,7 +209,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
       return;
     }
 
-    // اگر متصل است و روی سرور دیگری زده شد
+    // عدم اجازه سوییچ بدون قطع سرور قبلی
     if (_isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -213,7 +220,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
       return;
     }
 
-    // برقراری اتصال جدید
+    // اقدام به اتصال جدید
     setState(() => _isConnectingProcess = true);
 
     try {
@@ -292,7 +299,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
       ),
       body: Column(
         children: [
-          // باکس هدر نمایش وضعیت اتصال
+          // باکس وضعیت هدر (سبز در حالت متصل / قرمز در حالت قطع)
           Container(
             width: double.infinity,
             margin: const EdgeInsets.all(16),
@@ -401,7 +408,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
                           final bool isPingLoading = _pingLoading[configId] ?? false;
                           final int ping = _pings[configId] ?? 0;
 
-                          // غیرفعال کردن دکمه سایر سرورها در زمان متصل بودن
+                          // فقط زمانی که متصل هستیم و این آی‌دی با آی‌دی متصل فرق دارد غیرفعال می‌شود
                           final bool isDisabledButton = _isConnected && !isThisConnected;
 
                           return Container(
@@ -489,7 +496,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                   backgroundColor: isThisConnected
                                       ? Colors.redAccent.withOpacity(0.9)
                                       : isDisabledButton
-                                          ? Colors.grey.withOpacity(0.2)
+                                          ? Colors.grey.withOpacity(0.15)
                                           : const Color(0xFF8B5CF6),
                                   elevation: isThisConnected ? 0 : 4,
                                   shadowColor: const Color(0xFF8B5CF6).withOpacity(0.5),
@@ -504,7 +511,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                 child: Text(
                                   isThisConnected ? 'قطع' : 'اتصال',
                                   style: TextStyle(
-                                    color: isDisabledButton ? Colors.white38 : Colors.white,
+                                    color: isDisabledButton ? Colors.white24 : Colors.white,
                                     fontWeight: FontWeight.w900,
                                     fontSize: 13,
                                   ),
