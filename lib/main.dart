@@ -62,7 +62,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
     _fetchConfigs();
   }
 
-  // متد اختصاصی برای ریست کامل و آزاد کردن تمام دکمه‌ها
   void _resetToDisconnected() {
     if (!mounted) return;
     setState(() {
@@ -136,7 +135,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // ۳. سنجش پینگ دقیق
+  // ۳. سنجش پینگ
   Future<void> _testAllPings() async {
     for (var item in _configs) {
       _testSinglePing(item);
@@ -192,17 +191,16 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // ۴. مدیریت اتصال و قطع اتصال بدون گیر کردن دکمه‌ها
+  // ۴. مدیریت اتصال و سوییچ مستقیم بین کانفیگ‌ها
   Future<void> _toggleConnect(Map<String, dynamic> item) async {
+    if (_isConnectingProcess) return;
+
     final String configUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name'];
 
-    // الف) اگر سرور فعلی متصل است و دکمه «قطع» آن زده شد:
+    // حالت ۱: اگر کاربر دکمه «قطع» همین کانفیگ متصل را بزند
     if (_isConnected && _connectedConfigId == configId) {
-      // ۱. آنی تمام UI را آزاد کن
       _resetToDisconnected();
-
-      // ۲. سپس به لایه نیتیو دستور قطع بده
       try {
         await v2ray.stopV2Ray();
       } catch (e) {
@@ -211,25 +209,18 @@ class _ServerListScreenState extends State<ServerListScreen> {
       return;
     }
 
-    // ب) اگر سرور دیگری متصل باشد، اجازه کلیک نده
-    if (_isConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('لطفاً ابتدا اتصال سرور فعال را قطع کنید.'),
-          backgroundColor: Colors.amber,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    // ج) فرآیند شروع اتصال به کانفیگ جدید
+    // حالت ۲: اتصال مستقیم یا سوییچ به کانفیگ جدید
     setState(() {
       _isConnectingProcess = true;
-      _connectedConfigId = configId; // آیدی را ست می‌کنیم تا لودینگ روی همین دکمه قرار گیرد
+      _connectedConfigId = configId;
     });
 
     try {
+      // اگر قبلاً سرور دیگری متصل بود، ابتدا آن را قطع می‌کنیم
+      if (_isConnected) {
+        await v2ray.stopV2Ray();
+      }
+
       if (await v2ray.requestPermission()) {
         V2RayURL parser = V2ray.parseFromURL(configUrl);
 
@@ -305,7 +296,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
       ),
       body: Column(
         children: [
-          // باکس وضعیت هدر
+          // کارت وضعیت هدر (سبز/قرمز)
           Container(
             width: double.infinity,
             margin: const EdgeInsets.all(16),
@@ -410,9 +401,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
                           final item = _configs[index];
                           final String configId = item['id']?.toString() ?? item['name'];
                           
-                          // تعیین دقیق وضعیت این کانفیگ خاص
                           final bool isThisConnected = _isConnected && (_connectedConfigId == configId);
-                          final bool isDisabledButton = _isConnected && !isThisConnected;
 
                           final bool isPingLoading = _pingLoading[configId] ?? false;
                           final int ping = _pings[configId] ?? 0;
@@ -453,9 +442,9 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                   Expanded(
                                     child: Text(
                                       item['name'] ?? 'سرور Xray',
-                                      style: TextStyle(
+                                      style: const TextStyle(
                                         fontWeight: FontWeight.bold,
-                                        color: isDisabledButton ? Colors.white38 : Colors.white,
+                                        color: Colors.white,
                                         fontSize: 15,
                                       ),
                                     ),
@@ -501,9 +490,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: isThisConnected
                                       ? Colors.redAccent.withOpacity(0.9)
-                                      : isDisabledButton
-                                          ? Colors.grey.withOpacity(0.15)
-                                          : const Color(0xFF8B5CF6),
+                                      : const Color(0xFF8B5CF6),
                                   elevation: isThisConnected ? 0 : 4,
                                   shadowColor: const Color(0xFF8B5CF6).withOpacity(0.5),
                                   shape: RoundedRectangleBorder(
@@ -511,13 +498,13 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                   ),
                                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                                 ),
-                                onPressed: (_isConnectingProcess || isDisabledButton)
+                                onPressed: _isConnectingProcess
                                     ? null
                                     : () => _toggleConnect(item),
                                 child: Text(
                                   isThisConnected ? 'قطع' : 'اتصال',
-                                  style: TextStyle(
-                                    color: isDisabledButton ? Colors.white24 : Colors.white,
+                                  style: const TextStyle(
+                                    color: Colors.white,
                                     fontWeight: FontWeight.w900,
                                     fontSize: 13,
                                   ),
