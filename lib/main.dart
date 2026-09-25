@@ -69,6 +69,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
         if (!mounted) return;
         final stateUpper = status.state.toUpperCase();
         
+        // به روزرسانی متاداده وضعیت بدون قفل کردن ID
         setState(() {
           _statusText = stateUpper;
           if (stateUpper == 'CONNECTED') {
@@ -177,40 +178,30 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // ۴. مدیریت اتصال و قطع اتصال دقیق و بدون محدودیت دفعات
+  // ۴. مدیریت اتصال و قطع اتصال بدون قفل شدن دکمه‌ها
   Future<void> _toggleConnect(Map<String, dynamic> item) async {
-    if (_isConnectingProcess) return;
-
     final String configUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name'];
 
-    // الف) اگر کاربر روی دکمه «قطع» کانفیگ جاری کلیک کرده باشد:
+    // حالت الف: قطع اتصال سرور فعلی
     if (_isConnected && _connectedConfigId == configId) {
+      // آزاد کردن سریع و آنی تمام دکمه‌ها در UI
       setState(() {
-        _isConnectingProcess = true;
         _isConnected = false;
         _connectedConfigId = null;
         _statusText = "DISCONNECTED";
+        _isConnectingProcess = false;
       });
 
       try {
         await v2ray.stopV2Ray();
       } catch (e) {
-        debugPrint("خطا در قطع V2Ray: $e");
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isConnectingProcess = false;
-            _isConnected = false;
-            _connectedConfigId = null;
-            _statusText = "DISCONNECTED";
-          });
-        }
+        debugPrint("خطا در قطع سرویس: $e");
       }
       return;
     }
 
-    // ب) اگر سرور دیگری متصل باشد، اجازه اقدام به اتصال داده نمی‌شود
+    // حالت ب: اگر سروری متصل است، اجازه کلیک روی سرور دیگر داده نشود
     if (_isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -222,7 +213,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
       return;
     }
 
-    // ج) شروع فرآیند اتصال به سرور جدید:
+    // حالت ج: شروع اتصال جدید
     setState(() => _isConnectingProcess = true);
 
     try {
@@ -256,7 +247,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
         );
       }
     } finally {
-      // ریسک‌زدایی کامل: تحت هر شرایطی (موفق، خطا یا لغو مجوز)، قفل پروسه باز می‌شود
+      // اطمینان کامل از آزاد شدن وضعیت پردازش
       if (mounted) {
         setState(() {
           _isConnectingProcess = false;
@@ -306,7 +297,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
       ),
       body: Column(
         children: [
-          // کارت وضعیت هدر (سبز برای متصل / قرمز برای قطع)
+          // باکس وضعیت هدر
           Container(
             width: double.infinity,
             margin: const EdgeInsets.all(16),
@@ -415,7 +406,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
                           final bool isPingLoading = _pingLoading[configId] ?? false;
                           final int ping = _pings[configId] ?? 0;
 
-                          // تنها زمانی دکمه سایر سرورها غیرفعال است که اتصال فعال برقرار باشد
+                          // کلید اصلی: فقط اگر متصل هستیم، دکمه بقیه سرورها غیرفعال می‌شود
                           final bool isDisabledButton = _isConnected && !isThisConnected;
 
                           return Container(
