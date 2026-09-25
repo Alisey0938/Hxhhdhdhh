@@ -62,6 +62,17 @@ class _ServerListScreenState extends State<ServerListScreen> {
     _fetchConfigs();
   }
 
+  // متد اختصاصی برای ریست کامل و آزاد کردن تمام دکمه‌ها
+  void _resetToDisconnected() {
+    if (!mounted) return;
+    setState(() {
+      _isConnected = false;
+      _connectedConfigId = null;
+      _isConnectingProcess = false;
+      _statusText = "DISCONNECTED";
+    });
+  }
+
   // ۱. مقداردهی اولیه هسته Xray
   void _initV2Ray() async {
     v2ray = V2ray(
@@ -69,16 +80,19 @@ class _ServerListScreenState extends State<ServerListScreen> {
         if (!mounted) return;
         final stateUpper = status.state.toUpperCase();
         
-        // به روزرسانی متاداده وضعیت بدون قفل کردن ID
-        setState(() {
-          _statusText = stateUpper;
-          if (stateUpper == 'CONNECTED') {
+        if (stateUpper == 'CONNECTED') {
+          setState(() {
             _isConnected = true;
-          } else if (stateUpper == 'DISCONNECTED' || stateUpper == 'STOPPED') {
-            _isConnected = false;
-            _connectedConfigId = null;
-          }
-        });
+            _statusText = "CONNECTED";
+            _isConnectingProcess = false;
+          });
+        } else if (stateUpper == 'DISCONNECTED' || stateUpper == 'STOPPED' || stateUpper == 'IDLE') {
+          _resetToDisconnected();
+        } else {
+          setState(() {
+            _statusText = stateUpper;
+          });
+        }
       },
     );
 
@@ -178,21 +192,17 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // ۴. مدیریت اتصال و قطع اتصال بدون قفل شدن دکمه‌ها
+  // ۴. مدیریت اتصال و قطع اتصال بدون گیر کردن دکمه‌ها
   Future<void> _toggleConnect(Map<String, dynamic> item) async {
     final String configUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name'];
 
-    // حالت الف: قطع اتصال سرور فعلی
+    // الف) اگر سرور فعلی متصل است و دکمه «قطع» آن زده شد:
     if (_isConnected && _connectedConfigId == configId) {
-      // آزاد کردن سریع و آنی تمام دکمه‌ها در UI
-      setState(() {
-        _isConnected = false;
-        _connectedConfigId = null;
-        _statusText = "DISCONNECTED";
-        _isConnectingProcess = false;
-      });
+      // ۱. آنی تمام UI را آزاد کن
+      _resetToDisconnected();
 
+      // ۲. سپس به لایه نیتیو دستور قطع بده
       try {
         await v2ray.stopV2Ray();
       } catch (e) {
@@ -201,7 +211,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
       return;
     }
 
-    // حالت ب: اگر سروری متصل است، اجازه کلیک روی سرور دیگر داده نشود
+    // ب) اگر سرور دیگری متصل باشد، اجازه کلیک نده
     if (_isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -213,8 +223,11 @@ class _ServerListScreenState extends State<ServerListScreen> {
       return;
     }
 
-    // حالت ج: شروع اتصال جدید
-    setState(() => _isConnectingProcess = true);
+    // ج) فرآیند شروع اتصال به کانفیگ جدید
+    setState(() {
+      _isConnectingProcess = true;
+      _connectedConfigId = configId; // آیدی را ست می‌کنیم تا لودینگ روی همین دکمه قرار گیرد
+    });
 
     try {
       if (await v2ray.requestPermission()) {
@@ -228,12 +241,13 @@ class _ServerListScreenState extends State<ServerListScreen> {
 
         if (mounted) {
           setState(() {
-            _connectedConfigId = configId;
             _isConnected = true;
             _statusText = "CONNECTED";
+            _isConnectingProcess = false;
           });
         }
       } else {
+        _resetToDisconnected();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('مجوز VPN تأیید نشد.')),
@@ -241,17 +255,11 @@ class _ServerListScreenState extends State<ServerListScreen> {
         }
       }
     } catch (e) {
+      _resetToDisconnected();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('خطا در برقراری اتصال: $e')),
         );
-      }
-    } finally {
-      // اطمینان کامل از آزاد شدن وضعیت پردازش
-      if (mounted) {
-        setState(() {
-          _isConnectingProcess = false;
-        });
       }
     }
   }
@@ -401,13 +409,13 @@ class _ServerListScreenState extends State<ServerListScreen> {
                         itemBuilder: (context, index) {
                           final item = _configs[index];
                           final String configId = item['id']?.toString() ?? item['name'];
-                          final bool isThisConnected = _isConnected && _connectedConfigId == configId;
+                          
+                          // تعیین دقیق وضعیت این کانفیگ خاص
+                          final bool isThisConnected = _isConnected && (_connectedConfigId == configId);
+                          final bool isDisabledButton = _isConnected && !isThisConnected;
 
                           final bool isPingLoading = _pingLoading[configId] ?? false;
                           final int ping = _pings[configId] ?? 0;
-
-                          // کلید اصلی: فقط اگر متصل هستیم، دکمه بقیه سرورها غیرفعال می‌شود
-                          final bool isDisabledButton = _isConnected && !isThisConnected;
 
                           return Container(
                             margin: const EdgeInsets.only(bottom: 12),
