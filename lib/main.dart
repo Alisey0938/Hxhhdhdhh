@@ -17,7 +17,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MahsaNG Style Xray',
+      title: 'Xray Ultra',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF1B1D29),
@@ -236,6 +236,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
   int _lastSessionUpload = 0;
   int _lastSessionDownload = 0;
   int _accumulatedUsedBytes = 0;
+  int _remainingDays = 0;
 
   @override
   void initState() {
@@ -282,15 +283,25 @@ class _ServerListScreenState extends State<ServerListScreen> {
         _userData = data;
         _accumulatedUsedBytes = (data['used_bytes'] ?? 0);
 
+        // محاسبه تعداد روزهای باقی‌مانده
         if (data['created_at'] != null && data['max_days'] != null && data['max_days'] > 0) {
           final createdDate = DateTime.parse(data['created_at']);
-          final expireDate = createdDate.add(Duration(days: data['max_days']));
-          if (DateTime.now().isAfter(expireDate)) {
+          final maxDays = (data['max_days'] as num).toInt();
+          final expireDate = createdDate.add(Duration(days: maxDays));
+          final difference = expireDate.difference(DateTime.now()).inDays;
+
+          if (difference <= 0) {
+            _remainingDays = 0;
             _logoutUser('اعتبار زمانی حساب شما به پایان رسیده است.');
             return;
+          } else {
+            _remainingDays = difference;
           }
+        } else {
+          _remainingDays = 999; // نامحدود یا نامشخص
         }
 
+        // بررسی انقضای حجمی
         double maxGb = (data['max_volume_gb'] ?? 0).toDouble();
         if (maxGb > 0) {
           double usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
@@ -514,49 +525,16 @@ class _ServerListScreenState extends State<ServerListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    double usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
+    double maxGb = (_userData?['max_volume_gb'] ?? 0).toDouble();
+
     return Scaffold(
       appBar: AppBar(
-        leading: const Icon(Icons.menu, color: Colors.white70),
-        title: const Text('v17', style: TextStyle(fontSize: 18, color: Colors.white70)),
-        actions: [
-          const Center(child: Text('F', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
-          const SizedBox(width: 16),
-          const Icon(Icons.assignment_outlined, color: Colors.white70),
-          const SizedBox(width: 16),
-          const Icon(Icons.card_giftcard, color: Colors.white70),
-          const SizedBox(width: 16),
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline, color: Colors.white70),
-            onPressed: _fetchConfigs,
-          ),
-          const Icon(Icons.more_vert, color: Colors.white70),
-          const SizedBox(width: 12),
-        ],
+        title: const Text('Xray Ultra', style: TextStyle(fontSize: 18, color: Colors.white70)),
+        centerTitle: true,
       ),
       body: Column(
         children: [
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2B3252),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              children: [
-                const Text('Donor', style: TextStyle(color: Colors.white54, fontSize: 13)),
-                const Text(' | ', style: TextStyle(color: Colors.white24)),
-                const Expanded(
-                  child: Text(
-                    't.me/Meoow_VPN',
-                    style: TextStyle(color: Color(0xFF6B82C9), fontSize: 13, decoration: TextDecoration.underline),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Icon(Icons.flag_outlined, color: Colors.indigo.shade200, size: 20),
-              ],
-            ),
-          ),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B9BB4)))
@@ -611,7 +589,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(vertical: 10),
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAlignment.start,
                                       children: [
                                         Text(
                                           item['name'] ?? 'سرور Xray',
@@ -634,7 +612,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                   padding: const EdgeInsets.all(8.0),
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    crossAxisAlignment: CrossAlignment.end,
                                     children: [
                                       const Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -718,8 +696,9 @@ class _ServerListScreenState extends State<ServerListScreen> {
       bottomNavigationBar: Container(
         color: const Color(0xFF151821),
         height: 60,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             InkWell(
               onTap: _fetchConfigs,
@@ -732,6 +711,21 @@ class _ServerListScreenState extends State<ServerListScreen> {
                 ],
               ),
             ),
+            // اطلاعات میزان حجم و روزهای باقی‌مانده
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'حجم: ${usedGb.toStringAsFixed(2)} / ${maxGb > 0 ? maxGb.toStringAsFixed(1) : "∞"} GB',
+                  style: const TextStyle(color: Colors.white87, fontSize: 11, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'اعتبار: ${_remainingDays == 999 ? "نامحدود" : "$_remainingDays روز باقی‌مانده"}',
+                  style: const TextStyle(color: Colors.white54, fontSize: 10),
+                ),
+              ],
+            ),
             InkWell(
               onTap: _isTestingAllPings ? null : _testAllPings,
               child: Column(
@@ -742,22 +736,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
                   Text(_isTestingAllPings ? 'Testing...' : 'Test', style: const TextStyle(color: Colors.white54, fontSize: 10)),
                 ],
               ),
-            ),
-            const Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.sort, color: Colors.white54, size: 20),
-                SizedBox(height: 2),
-                Text('Sort', style: TextStyle(color: Colors.white54, fontSize: 10)),
-              ],
-            ),
-            const Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.layers_outlined, color: Colors.white54, size: 20),
-                SizedBox(height: 2),
-                Text('All Subs', style: TextStyle(color: Colors.white54, fontSize: 10)),
-              ],
             ),
           ],
         ),
