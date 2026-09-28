@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 
@@ -16,18 +17,16 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Xray Ultra Client',
+      title: 'MahsaNG Style Xray',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF090B10),
+        scaffoldBackgroundColor: const Color(0xFF1B1D29),
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF10B981),
-          secondary: Color(0xFF8B5CF6),
-          surface: Color(0xFF131722),
+          primary: Color(0xFF8B9BB4),
+          surface: Color(0xFF222536),
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF131722),
-          centerTitle: true,
+          backgroundColor: Color(0xFF1B1D29),
           elevation: 0,
         ),
       ),
@@ -74,7 +73,7 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      body: Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6))),
+      body: Center(child: CircularProgressIndicator(color: Color(0xFF8B9BB4))),
     );
   }
 }
@@ -160,19 +159,20 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.bolt, size: 80, color: Color(0xFF8B5CF6)),
+              const Icon(Icons.vpn_key_rounded, size: 80, color: Color(0xFF8B9BB4)),
               const SizedBox(height: 12),
               const Text(
-                'XRAY ULTRA',
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, letterSpacing: 2),
+                'MAHSA / XRAY ULTRA',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5),
               ),
               const SizedBox(height: 32),
               TextField(
                 controller: _usernameController,
                 decoration: InputDecoration(
                   labelText: 'نام کاربری',
-                  prefixIcon: const Icon(Icons.person, color: Color(0xFF8B5CF6)),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                  filled: true,
+                  fillColor: const Color(0xFF222536),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 ),
               ),
               const SizedBox(height: 16),
@@ -181,23 +181,24 @@ class _LoginScreenState extends State<LoginScreen> {
                 obscureText: true,
                 decoration: InputDecoration(
                   labelText: 'رمز عبور',
-                  prefixIcon: const Icon(Icons.lock, color: Color(0xFF8B5CF6)),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                  filled: true,
+                  fillColor: const Color(0xFF222536),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 ),
               ),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
-                height: 50,
+                height: 48,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF8B5CF6),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    backgroundColor: const Color(0xFF3B4261),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: _isLoading ? null : _login,
                   child: _isLoading
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('ورود به حساب', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      : const Text('ورود', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
@@ -227,13 +228,15 @@ class _ServerListScreenState extends State<ServerListScreen> {
   bool _isLoading = true;
   bool _isTestingAllPings = false;
   bool _isConnectingProcess = false;
-  String? _connectedConfigId;
+  String? _selectedConfigId;
   bool _isConnected = false;
-  String _statusText = "DISCONNECTED";
 
   Map<String, dynamic>? _userData;
-  int _lastUpload = 0;
-  int _lastDownload = 0;
+  
+  // متغیرهای محاسبه تفاضلی ترافیک برای جلوگیری از صفر شدن هنگام باز/بستن برنامه
+  int _lastSessionUpload = 0;
+  int _lastSessionDownload = 0;
+  int _accumulatedUsedBytes = 0;
 
   @override
   void initState() {
@@ -243,14 +246,33 @@ class _ServerListScreenState extends State<ServerListScreen> {
     _fetchConfigs();
   }
 
-  void _resetToDisconnected() {
-    if (!mounted) return;
-    setState(() {
-      _isConnected = false;
-      _connectedConfigId = null;
-      _isConnectingProcess = false;
-      _statusText = "DISCONNECTED";
-    });
+  void _initV2Ray() async {
+    v2ray = V2ray(
+      onStatusChanged: (status) {
+        if (!mounted) return;
+        final stateUpper = status.state.toUpperCase();
+
+        if (stateUpper == 'CONNECTED') {
+          setState(() {
+            _isConnected = true;
+            _isConnectingProcess = false;
+          });
+          _calculateAndSaveTraffic(status.upload, status.download);
+        } else if (stateUpper == 'DISCONNECTED' || stateUpper == 'STOPPED' || stateUpper == 'IDLE') {
+          setState(() {
+            _isConnected = false;
+            _isConnectingProcess = false;
+            _lastSessionUpload = 0;
+            _lastSessionDownload = 0;
+          });
+        }
+      },
+    );
+
+    await v2ray.initialize(
+      notificationIconResourceType: "mipmap",
+      notificationIconResourceName: "ic_launcher",
+    );
   }
 
   Future<void> _fetchUserDataAndCheck() async {
@@ -259,7 +281,9 @@ class _ServerListScreenState extends State<ServerListScreen> {
       if (res.statusCode == 200 && res.body != 'null') {
         final data = json.decode(res.body);
         _userData = data;
+        _accumulatedUsedBytes = (data['used_bytes'] ?? 0);
 
+        // بررسی انقضای زمانی
         if (data['created_at'] != null && data['max_days'] != null && data['max_days'] > 0) {
           final createdDate = DateTime.parse(data['created_at']);
           final expireDate = createdDate.add(Duration(days: data['max_days']));
@@ -269,10 +293,10 @@ class _ServerListScreenState extends State<ServerListScreen> {
           }
         }
 
+        // بررسی انقضای حجمی
         double maxGb = (data['max_volume_gb'] ?? 0).toDouble();
-        int usedBytes = (data['used_bytes'] ?? 0);
         if (maxGb > 0) {
-          double usedGb = usedBytes / (1024 * 1024 * 1024);
+          double usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
           if (usedGb >= maxGb) {
             _logoutUser('حجم مصرفی حساب شما به پایان رسیده است.');
             return;
@@ -286,6 +310,49 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
+  // محاسبه دقیق ترافیک به‌صورت تفاضلی (Delta) و ذخیره دائمی در دیتابیس
+  void _calculateAndSaveTraffic(int currentUpload, int currentDownload) async {
+    if (!_isConnected || _userData == null) return;
+
+    int uploadDelta = 0;
+    int downloadDelta = 0;
+
+    if (_lastSessionUpload > 0 && currentUpload >= _lastSessionUpload) {
+      uploadDelta = currentUpload - _lastSessionUpload;
+    }
+    if (_lastSessionDownload > 0 && currentDownload >= _lastSessionDownload) {
+      downloadDelta = currentDownload - _lastSessionDownload;
+    }
+
+    _lastSessionUpload = currentUpload;
+    _lastSessionDownload = currentDownload;
+
+    int totalDelta = uploadDelta + downloadDelta;
+
+    if (totalDelta > 0) {
+      _accumulatedUsedBytes += totalDelta;
+      _userData!['used_bytes'] = _accumulatedUsedBytes;
+
+      if (mounted) setState(() {});
+
+      // ذخیره در Firebase پنل مدیریت
+      try {
+        http.patch(
+          Uri.parse("${firebaseUrl}users/${widget.userId}.json"),
+          body: json.encode({"used_bytes": _accumulatedUsedBytes}),
+        );
+      } catch (e) {
+        debugPrint("خطا در ثبت حجم: $e");
+      }
+
+      // چک کردن حجم مجاز
+      double maxGb = (_userData!['max_volume_gb'] ?? 0).toDouble();
+      if (maxGb > 0 && (_accumulatedUsedBytes / (1024 * 1024 * 1024)) >= maxGb) {
+        _logoutUser('حجم مجاز شما به پایان رسید.');
+      }
+    }
+  }
+
   void _logoutUser(String reason) async {
     try {
       await v2ray.stopV2Ray();
@@ -296,65 +363,12 @@ class _ServerListScreenState extends State<ServerListScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(reason), backgroundColor: Colors.redAccent, duration: const Duration(seconds: 4)),
+        SnackBar(content: Text(reason), backgroundColor: Colors.redAccent),
       );
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
     }
   }
 
-  void _updateTrafficUsage(int upload, int download) async {
-    if (!_isConnected || _userData == null) return;
-
-    int newUsage = (upload - _lastUpload) + (download - _lastDownload);
-    if (newUsage > 0 && _lastUpload > 0 && _lastDownload > 0) {
-      int currentUsed = (_userData!['used_bytes'] ?? 0);
-      int totalUsed = currentUsed + newUsage;
-
-      _userData!['used_bytes'] = totalUsed;
-
-      http.patch(
-        Uri.parse("${firebaseUrl}users/${widget.userId}.json"),
-        body: json.encode({"used_bytes": totalUsed}),
-      );
-
-      double maxGb = (_userData!['max_volume_gb'] ?? 0).toDouble();
-      if (maxGb > 0 && (totalUsed / (1024 * 1024 * 1024)) >= maxGb) {
-        _logoutUser('حجم مجاز شما تمام شد.');
-      }
-    }
-
-    _lastUpload = upload;
-    _lastDownload = download;
-  }
-
-  void _initV2Ray() async {
-    v2ray = V2ray(
-      onStatusChanged: (status) {
-        if (!mounted) return;
-        final stateUpper = status.state.toUpperCase();
-
-        if (stateUpper == 'CONNECTED') {
-          setState(() {
-            _isConnected = true;
-            _statusText = "CONNECTED";
-            _isConnectingProcess = false;
-          });
-          _updateTrafficUsage(status.upload, status.download);
-        } else if (stateUpper == 'DISCONNECTED' || stateUpper == 'STOPPED' || stateUpper == 'IDLE') {
-          _resetToDisconnected();
-        } else {
-          setState(() => _statusText = stateUpper);
-        }
-      },
-    );
-
-    await v2ray.initialize(
-      notificationIconResourceType: "mipmap",
-      notificationIconResourceName: "ic_launcher",
-    );
-  }
-
-  // بروزرسانی لیست سرورها
   Future<void> _fetchConfigs() async {
     setState(() => _isLoading = true);
     try {
@@ -375,6 +389,9 @@ class _ServerListScreenState extends State<ServerListScreen> {
 
         setState(() {
           _configs = loadedConfigs;
+          if (_configs.isNotEmpty && _selectedConfigId == null) {
+            _selectedConfigId = _configs[0]['id']?.toString() ?? _configs[0]['name'];
+          }
           _isLoading = false;
         });
 
@@ -387,7 +404,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // تست پینگ همه سرورها
   Future<void> _testAllPings() async {
     if (_isTestingAllPings) return;
     setState(() => _isTestingAllPings = true);
@@ -401,7 +417,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // تست پینگ یک کانفیگ (پشتیبانی از تمام پروتکل‌ها و متدهای اتصال)
   Future<void> _testSinglePing(Map<String, dynamic> item) async {
     final String configUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name'];
@@ -414,14 +429,11 @@ class _ServerListScreenState extends State<ServerListScreen> {
 
     try {
       V2RayURL parser = V2ray.parseFromURL(configUrl);
-      
-      // اولویت ۱: تست واقعی از طریق هسته V2Ray (تست کامل پروتکل‌ها شامل WS, gRPC, xHTTP)
       int delay = await v2ray.getServerDelay(
         config: parser.getFullConfiguration(),
         url: 'https://1.1.1.1',
       );
 
-      // اولویت ۲: سوکت تست مستقیم (در صورت لزوم)
       if (delay <= 0) {
         final stopwatch = Stopwatch()..start();
         final int targetPort = int.tryParse(parser.port.toString()) ?? 443;
@@ -447,36 +459,39 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  Future<void> _toggleConnect(Map<String, dynamic> item) async {
-    if (_isConnectingProcess) return;
+  Future<void> _toggleMainConnection() async {
+    if (_isConnectingProcess || _selectedConfigId == null) return;
 
-    final String configUrl = (item['config'] ?? '').toString().trim();
-    final String configId = item['id']?.toString() ?? item['name'];
-
-    if (_isConnected && _connectedConfigId == configId) {
-      _resetToDisconnected();
+    if (_isConnected) {
+      setState(() => _isConnectingProcess = true);
       try {
         await v2ray.stopV2Ray();
       } catch (_) {}
+      setState(() {
+        _isConnected = false;
+        _isConnectingProcess = false;
+      });
       return;
     }
 
-    setState(() {
-      _isConnectingProcess = true;
-      _connectedConfigId = configId;
-      _lastUpload = 0;
-      _lastDownload = 0;
-    });
+    final selectedConfig = _configs.firstWhere(
+      (c) => (c['id']?.toString() ?? c['name']) == _selectedConfigId,
+      orElse: () => null,
+    );
+
+    if (selectedConfig == null) return;
+
+    final String configUrl = (selectedConfig['config'] ?? '').toString().trim();
+
+    setState(() => _isConnectingProcess = true);
 
     try {
-      if (_isConnected) await v2ray.stopV2Ray();
-
-      if (await v2ray.requestPermission()) {
-        // تحلیل کانفیگ با پشتیبانی از پروتکل‌های xHTTP, gRPC, WS, TCP
+      final bool hasPermission = await v2ray.requestPermission();
+      if (hasPermission) {
         V2RayURL parser = V2ray.parseFromURL(configUrl);
 
         await v2ray.startV2Ray(
-          remark: item['name'] ?? parser.remark,
+          remark: selectedConfig['name'] ?? parser.remark,
           config: parser.getFullConfiguration(),
           proxyOnly: false,
         );
@@ -484,172 +499,290 @@ class _ServerListScreenState extends State<ServerListScreen> {
         if (mounted) {
           setState(() {
             _isConnected = true;
-            _statusText = "CONNECTED";
             _isConnectingProcess = false;
           });
         }
       } else {
-        _resetToDisconnected();
+        setState(() => _isConnectingProcess = false);
       }
     } catch (e) {
-      _resetToDisconnected();
+      setState(() => _isConnectingProcess = false);
     }
   }
 
-  Color _getPingColor(int ping) {
-    if (ping <= 0) return Colors.redAccent;
-    if (ping < 300) return const Color(0xFF10B981);
-    if (ping < 600) return Colors.amber;
-    return Colors.redAccent;
-  }
-
-  String _getVolumeString() {
-    if (_userData == null) return "در حال دریافت...";
-    double maxGb = (_userData!['max_volume_gb'] ?? 0).toDouble();
-    if (maxGb == 0) return "حجم نامحدود";
-
-    int usedBytes = (_userData!['used_bytes'] ?? 0);
-    double usedGb = usedBytes / (1024 * 1024 * 1024);
-    return "${usedGb.toStringAsFixed(2)} GB / ${maxGb.toStringAsFixed(1)} GB";
+  String _getProtocolType(String url) {
+    if (url.startsWith('vless://')) return 'VLESS';
+    if (url.startsWith('vmess://')) return 'VMESS';
+    if (url.startsWith('trojan://')) return 'TROJAN';
+    if (url.startsWith('shadowsocks://') || url.startsWith('ss://')) return 'SS';
+    return 'VLESS';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('XRAY ULTRA', style: TextStyle(fontWeight: FontWeight.bold)),
+        leading: const Icon(Icons.menu, color: Colors.white70),
+        title: const Text('v17', style: TextStyle(fontSize: 18, color: Colors.white70)),
         actions: [
-          // دکمه بروزرسانی مجدد لیست سرورها
+          const Center(child: Text('F', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+          const SizedBox(width: 16),
+          const Icon(Icons.assignment_outlined, color: Colors.white70),
+          const SizedBox(width: 16),
+          const Icon(Icons.card_giftcard, color: Colors.white70),
+          const SizedBox(width: 16),
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF10B981)),
-            tooltip: 'بروزرسانی سرورها',
-            onPressed: _isLoading ? null : () => _fetchConfigs(),
+            icon: const Icon(Icons.add_circle_outline, color: Colors.white70),
+            onPressed: _fetchConfigs,
           ),
-          // دکمه خروج از حساب
-          IconButton(
-            icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
-            tooltip: 'خروج',
-            onPressed: () => _logoutUser('از حساب کاربری خارج شدید.'),
-          ),
+          const Icon(Icons.more_vert, color: Colors.white70),
+          const SizedBox(width: 12),
         ],
       ),
       body: Column(
         children: [
-          // کارت وضعیت اتصال و مصرف حجم
+          // Sub bar / Banner
           Container(
-            width: double.infinity,
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(16),
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: _isConnected
-                    ? [const Color(0xFF064E3B), const Color(0xFF10B981)]
-                    : [const Color(0xFF451225), const Color(0xFFDC2626)],
-              ),
+              color: const Color(0xFF2B3252),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Icon(_isConnected ? Icons.shield : Icons.shield_outlined, size: 30, color: Colors.white),
-                    const SizedBox(width: 12),
-                    Text(
-                      _isConnected ? "اتصال ایمن برقرار است" : "قطع اتصال",
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-                  ],
-                ),
-                const Divider(color: Colors.white24, height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text("مصرف حجم:", style: TextStyle(color: Colors.white70, fontSize: 13)),
-                    Text(_getVolumeString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // دکمه تست پینگ همه سرورها
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('لیست سرورها', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF131722),
-                    foregroundColor: const Color(0xFF8B5CF6),
-                    side: const BorderSide(color: Color(0xFF8B5CF6)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                const Text('Donor', style: TextStyle(color: Colors.white54, fontSize: 13)),
+                const Text(' | ', style: TextStyle(color: Colors.white24)),
+                const Expanded(
+                  child: Text(
+                    't.me/Meoow_VPN',
+                    style: TextStyle(color: Color(0xFF6B82C9), fontSize: 13, decoration: TextDecoration.underline),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  onPressed: _isTestingAllPings ? null : _testAllPings,
-                  icon: _isTestingAllPings
-                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF8B5CF6)))
-                      : const Icon(Icons.speed, size: 18),
-                  label: Text(_isTestingAllPings ? 'در حال تست...' : 'تست پینگ همه'),
                 ),
+                Icon(Icons.flag_outlined, color: Colors.indigo.shade200, size: 20),
               ],
             ),
           ),
 
-          // لیست کانفیگ‌ها
+          // Configs List
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)))
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B9BB4)))
                 : ListView.builder(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     itemCount: _configs.length,
                     itemBuilder: (context, index) {
                       final item = _configs[index];
                       final String configId = item['id']?.toString() ?? item['name'];
-                      final bool isThisConnected = _isConnected && (_connectedConfigId == configId);
+                      final String configUrl = (item['config'] ?? '').toString();
+                      final String protocol = _getProtocolType(configUrl);
+                      final bool isSelected = (_selectedConfigId == configId);
                       final int ping = _pings[configId] ?? 0;
                       final bool isPingLoading = _pingLoading[configId] ?? false;
 
-                      return Card(
-                        color: const Color(0xFF131722),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        child: ListTile(
-                          leading: Text(
-                            item['flag'] ?? '🌐',
-                            style: const TextStyle(fontSize: 24),
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedConfigId = configId;
+                          });
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected ? const Color(0xFF2A3045) : const Color(0xFF232738),
+                            borderRadius: BorderRadius.circular(12),
+                            border: isSelected ? Border.all(color: const Color(0xFF7A93D1), width: 1.5) : null,
                           ),
-                          title: Text(item['name'] ?? 'سرور Xray', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                          subtitle: isPingLoading
-                              ? const Text('در حال گرفتن پینگ...', style: TextStyle(color: Colors.white38, fontSize: 12))
-                              : Text(
-                                  ping > 0 ? '$ping ms' : (ping == -1 ? 'تایم‌آوت' : 'تست نشده'),
-                                  style: TextStyle(color: _getPingColor(ping), fontWeight: FontWeight.bold, fontSize: 12),
+                          child: IntrinsicHeight(
+                            child: Row(
+                              children: [
+                                // Protocol Tag Vertical
+                                Container(
+                                  width: 26,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black26,
+                                    borderRadius: const BorderRadius.only(
+                                      topLeft: Radius.circular(12),
+                                      bottomLeft: Radius.circular(12),
+                                    ),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: RotatedBox(
+                                    quarterTurns: 3,
+                                    child: Text(
+                                      protocol,
+                                      style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
                                 ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // دکمه پینگ تک سرور
-                              IconButton(
-                                icon: const Icon(Icons.bolt, color: Colors.amber, size: 20),
-                                onPressed: () => _testSinglePing(item),
-                              ),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: isThisConnected ? Colors.redAccent : const Color(0xFF8B5CF6),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                const SizedBox(width: 12),
+
+                                // Main Info
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAlignment.start,
+                                      children: [
+                                        Text(
+                                          item['name'] ?? 'سرور Xray',
+                                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          configUrl.isNotEmpty ? configUrl : 't.me/MahsaNG',
+                                          style: const TextStyle(color: Colors.white38, fontSize: 11),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
-                                onPressed: _isConnectingProcess ? null : () => _toggleConnect(item),
-                                child: Text(isThisConnected ? 'قطع' : 'اتصال'),
-                              ),
-                            ],
+
+                                // Actions & Ping Badge
+                                Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    crossAxisAlignment: CrossAlignment.end,
+                                    children: [
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Text('Mahsa', style: TextStyle(color: Colors.white38, fontSize: 10)),
+                                          const SizedBox(width: 8),
+                                          const Icon(Icons.open_in_new, color: Colors.white70, size: 18),
+                                          // آیکون سطل زباله حذف شده است
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      // Ping Badge
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: isPingLoading
+                                              ? Colors.white10
+                                              : (ping > 0 ? const Color(0xFF2E5A3C) : const Color(0xFF613137)),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          isPingLoading
+                                              ? '...'
+                                              : (ping > 0 ? '${ping}ms' : '-1ms'),
+                                          style: TextStyle(
+                                            color: isPingLoading
+                                                ? Colors.white54
+                                                : (ping > 0 ? const Color(0xFF81C784) : const Color(0xFFE57373)),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       );
                     },
                   ),
           ),
+
+          // Bottom Bar Status
+          Container(
+            color: const Color(0xFF28314A),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.circle,
+                  size: 12,
+                  color: _isConnected ? Colors.greenAccent : Colors.redAccent,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _isConnected
+                        ? 'CONNECTED, [long press->show ip,speed test]'
+                        : 'OFF , [long press->show ip,speed test]',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
+      ),
+
+      // FAB Connection Button
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 45.0),
+        child: FloatingActionButton(
+          backgroundColor: _isConnected ? const Color(0xFF4CAF50) : const Color(0xFFB0BEC5),
+          onPressed: _toggleMainConnection,
+          child: _isConnectingProcess
+              ? const CircularProgressIndicator(color: Colors.white)
+              : Icon(
+                  Icons.power_settings_new,
+                  color: _isConnected ? Colors.white : const Color(0xFF1B1D29),
+                  size: 30,
+                ),
+        ),
+      ),
+
+      // Bottom Navigation Bar
+      bottomNavigationBar: Container(
+        color: const Color(0xFF151821),
+        height: 60,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            InkWell(
+              onTap: _fetchConfigs,
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.file_download_outlined, color: Colors.white54, size: 20),
+                  SizedBox(height: 2),
+                  Text('Get Config', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                ],
+              ),
+            ),
+            InkWell(
+              onTap: _isTestingAllPings ? null : _testAllPings,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.bolt, color: _isTestingAllPings ? Colors.amber : Colors.white54, size: 20),
+                  const SizedBox(height: 2),
+                  Text(_isTestingAllPings ? 'Testing...' : 'Test', style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                ],
+              ),
+            ),
+            const Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.sort, color: Colors.white54, size: 20),
+                SizedBox(height: 2),
+                Text('Sort', style: TextStyle(color: Colors.white54, fontSize: 10)),
+              ],
+            ),
+            const Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.layers_outlined, color: Colors.white54, size: 20),
+                SizedBox(height: 2),
+                Text('All Subs', style: TextStyle(color: Colors.white54, fontSize: 10)),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
