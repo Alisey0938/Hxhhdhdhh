@@ -222,8 +222,10 @@ class _ServerListScreenState extends State<ServerListScreen> {
   late V2ray v2ray;
   List<dynamic> _configs = [];
   final Map<String, int> _pings = {};
+  final Map<String, bool> _pingLoading = {};
 
   bool _isLoading = true;
+  bool _isTestingAllPings = false;
   bool _isConnectingProcess = false;
   String? _connectedConfigId;
   bool _isConnected = false;
@@ -352,6 +354,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
     );
   }
 
+  // بروزرسانی لیست سرورها
   Future<void> _fetchConfigs() async {
     setState(() => _isLoading = true);
     try {
@@ -384,22 +387,41 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
+  // تست پینگ همه سرورها
   Future<void> _testAllPings() async {
+    if (_isTestingAllPings) return;
+    setState(() => _isTestingAllPings = true);
+
     for (var item in _configs) {
-      _testSinglePing(item);
+      await _testSinglePing(item);
+    }
+
+    if (mounted) {
+      setState(() => _isTestingAllPings = false);
     }
   }
 
+  // تست پینگ یک کانفیگ (پشتیبانی از تمام پروتکل‌ها و متدهای اتصال)
   Future<void> _testSinglePing(Map<String, dynamic> item) async {
     final String configUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name'];
 
     if (configUrl.isEmpty) return;
 
+    if (mounted) {
+      setState(() => _pingLoading[configId] = true);
+    }
+
     try {
       V2RayURL parser = V2ray.parseFromURL(configUrl);
-      int delay = await v2ray.getServerDelay(config: parser.getFullConfiguration(), url: 'https://1.1.1.1');
+      
+      // اولویت ۱: تست واقعی از طریق هسته V2Ray (تست کامل پروتکل‌ها شامل WS, gRPC, xHTTP)
+      int delay = await v2ray.getServerDelay(
+        config: parser.getFullConfiguration(),
+        url: 'https://1.1.1.1',
+      );
 
+      // اولویت ۲: سوکت تست مستقیم (در صورت لزوم)
       if (delay <= 0) {
         final stopwatch = Stopwatch()..start();
         final int targetPort = int.tryParse(parser.port.toString()) ?? 443;
@@ -412,12 +434,14 @@ class _ServerListScreenState extends State<ServerListScreen> {
       if (mounted) {
         setState(() {
           _pings[configId] = delay;
+          _pingLoading[configId] = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _pings[configId] = -1;
+          _pingLoading[configId] = false;
         });
       }
     }
@@ -448,6 +472,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
       if (_isConnected) await v2ray.stopV2Ray();
 
       if (await v2ray.requestPermission()) {
+        // تحلیل کانفیگ با پشتیبانی از پروتکل‌های xHTTP, gRPC, WS, TCP
         V2RayURL parser = V2ray.parseFromURL(configUrl);
 
         await v2ray.startV2Ray(
@@ -494,14 +519,23 @@ class _ServerListScreenState extends State<ServerListScreen> {
       appBar: AppBar(
         title: const Text('XRAY ULTRA', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
+          // دکمه بروزرسانی مجدد لیست سرورها
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF10B981)),
+            tooltip: 'بروزرسانی سرورها',
+            onPressed: _isLoading ? null : () => _fetchConfigs(),
+          ),
+          // دکمه خروج از حساب
           IconButton(
             icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+            tooltip: 'خروج',
             onPressed: () => _logoutUser('از حساب کاربری خارج شدید.'),
           ),
         ],
       ),
       body: Column(
         children: [
+          // کارت وضعیت اتصال و مصرف حجم
           Container(
             width: double.infinity,
             margin: const EdgeInsets.all(16),
@@ -537,6 +571,32 @@ class _ServerListScreenState extends State<ServerListScreen> {
               ],
             ),
           ),
+
+          // دکمه تست پینگ همه سرورها
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('لیست سرورها', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF131722),
+                    foregroundColor: const Color(0xFF8B5CF6),
+                    side: const BorderSide(color: Color(0xFF8B5CF6)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _isTestingAllPings ? null : _testAllPings,
+                  icon: _isTestingAllPings
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF8B5CF6)))
+                      : const Icon(Icons.speed, size: 18),
+                  label: Text(_isTestingAllPings ? 'در حال تست...' : 'تست پینگ همه'),
+                ),
+              ],
+            ),
+          ),
+
+          // لیست کانفیگ‌ها
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)))
@@ -548,19 +608,41 @@ class _ServerListScreenState extends State<ServerListScreen> {
                       final String configId = item['id']?.toString() ?? item['name'];
                       final bool isThisConnected = _isConnected && (_connectedConfigId == configId);
                       final int ping = _pings[configId] ?? 0;
+                      final bool isPingLoading = _pingLoading[configId] ?? false;
 
                       return Card(
                         color: const Color(0xFF131722),
                         margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         child: ListTile(
-                          title: Text(item['name'] ?? 'سرور Xray', style: const TextStyle(color: Colors.white)),
-                          subtitle: Text('$ping ms', style: TextStyle(color: _getPingColor(ping))),
-                          trailing: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: isThisConnected ? Colors.redAccent : const Color(0xFF8B5CF6),
-                            ),
-                            onPressed: _isConnectingProcess ? null : () => _toggleConnect(item),
-                            child: Text(isThisConnected ? 'قطع' : 'اتصال'),
+                          leading: Text(
+                            item['flag'] ?? '🌐',
+                            style: const TextStyle(fontSize: 24),
+                          ),
+                          title: Text(item['name'] ?? 'سرور Xray', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                          subtitle: isPingLoading
+                              ? const Text('در حال گرفتن پینگ...', style: TextStyle(color: Colors.white38, fontSize: 12))
+                              : Text(
+                                  ping > 0 ? '$ping ms' : (ping == -1 ? 'تایم‌آوت' : 'تست نشده'),
+                                  style: TextStyle(color: _getPingColor(ping), fontWeight: FontWeight.bold, fontSize: 12),
+                                ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // دکمه پینگ تک سرور
+                              IconButton(
+                                icon: const Icon(Icons.bolt, color: Colors.amber, size: 20),
+                                onPressed: () => _testSinglePing(item),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isThisConnected ? Colors.redAccent : const Color(0xFF8B5CF6),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                                onPressed: _isConnectingProcess ? null : () => _toggleConnect(item),
+                                child: Text(isThisConnected ? 'قطع' : 'اتصال'),
+                              ),
+                            ],
                           ),
                         ),
                       );
