@@ -233,7 +233,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
 
   Map<String, dynamic>? _userData;
   
-  // متغیرهای محاسبه تفاضلی ترافیک برای جلوگیری از صفر شدن هنگام باز/بستن برنامه
   int _lastSessionUpload = 0;
   int _lastSessionDownload = 0;
   int _accumulatedUsedBytes = 0;
@@ -283,7 +282,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
         _userData = data;
         _accumulatedUsedBytes = (data['used_bytes'] ?? 0);
 
-        // بررسی انقضای زمانی
         if (data['created_at'] != null && data['max_days'] != null && data['max_days'] > 0) {
           final createdDate = DateTime.parse(data['created_at']);
           final expireDate = createdDate.add(Duration(days: data['max_days']));
@@ -293,7 +291,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
           }
         }
 
-        // بررسی انقضای حجمی
         double maxGb = (data['max_volume_gb'] ?? 0).toDouble();
         if (maxGb > 0) {
           double usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
@@ -310,7 +307,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // محاسبه دقیق ترافیک به‌صورت تفاضلی (Delta) و ذخیره دائمی در دیتابیس
   void _calculateAndSaveTraffic(int currentUpload, int currentDownload) async {
     if (!_isConnected || _userData == null) return;
 
@@ -335,7 +331,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
 
       if (mounted) setState(() {});
 
-      // ذخیره در Firebase پنل مدیریت
       try {
         http.patch(
           Uri.parse("${firebaseUrl}users/${widget.userId}.json"),
@@ -345,7 +340,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
         debugPrint("خطا در ثبت حجم: $e");
       }
 
-      // چک کردن حجم مجاز
       double maxGb = (_userData!['max_volume_gb'] ?? 0).toDouble();
       if (maxGb > 0 && (_accumulatedUsedBytes / (1024 * 1024 * 1024)) >= maxGb) {
         _logoutUser('حجم مجاز شما به پایان رسید.');
@@ -541,7 +535,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
       ),
       body: Column(
         children: [
-          // Sub bar / Banner
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -564,8 +557,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
               ],
             ),
           ),
-
-          // Configs List
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B9BB4)))
@@ -597,12 +588,11 @@ class _ServerListScreenState extends State<ServerListScreen> {
                           child: IntrinsicHeight(
                             child: Row(
                               children: [
-                                // Protocol Tag Vertical
                                 Container(
                                   width: 26,
-                                  decoration: BoxDecoration(
+                                  decoration: const BoxDecoration(
                                     color: Colors.black26,
-                                    borderRadius: const BorderRadius.only(
+                                    borderRadius: BorderRadius.only(
                                       topLeft: Radius.circular(12),
                                       bottomLeft: Radius.circular(12),
                                     ),
@@ -617,13 +607,11 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                   ),
                                 ),
                                 const SizedBox(width: 12),
-
-                                // Main Info
                                 Expanded(
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(vertical: 10),
                                     child: Column(
-                                      crossAxisAlignment: CrossAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           item['name'] ?? 'سرور Xray',
@@ -642,25 +630,21 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                     ),
                                   ),
                                 ),
-
-                                // Actions & Ping Badge
                                 Padding(
                                   padding: const EdgeInsets.all(8.0),
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    crossAxisAlignment: CrossAlignment.end,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
-                                      Row(
+                                      const Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          const Text('Mahsa', style: TextStyle(color: Colors.white38, fontSize: 10)),
-                                          const SizedBox(width: 8),
-                                          const Icon(Icons.open_in_new, color: Colors.white70, size: 18),
-                                          // آیکون سطل زباله حذف شده است
+                                          Text('Mahsa', style: TextStyle(color: Colors.white38, fontSize: 10)),
+                                          SizedBox(width: 8),
+                                          Icon(Icons.open_in_new, color: Colors.white70, size: 18),
                                         ],
                                       ),
                                       const SizedBox(height: 12),
-                                      // Ping Badge
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                         decoration: BoxDecoration(
@@ -693,8 +677,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
                     },
                   ),
           ),
-
-          // Bottom Bar Status
           Container(
             color: const Color(0xFF28314A),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -719,8 +701,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
           ),
         ],
       ),
-
-      // FAB Connection Button
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 45.0),
         child: FloatingActionButton(
@@ -735,8 +715,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
                 ),
         ),
       ),
-
-      // Bottom Navigation Bar
       bottomNavigationBar: Container(
         color: const Color(0xFF151821),
         height: 60,
