@@ -283,7 +283,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
         _userData = data;
         _accumulatedUsedBytes = (data['used_bytes'] ?? 0);
 
-        // محاسبه تعداد روزهای باقی‌مانده
         if (data['created_at'] != null && data['max_days'] != null && data['max_days'] > 0) {
           final createdDate = DateTime.parse(data['created_at']);
           final maxDays = (data['max_days'] as num).toInt();
@@ -298,10 +297,9 @@ class _ServerListScreenState extends State<ServerListScreen> {
             _remainingDays = difference;
           }
         } else {
-          _remainingDays = 999; // نامحدود یا نامشخص
+          _remainingDays = 999;
         }
 
-        // بررسی انقضای حجمی
         double maxGb = (data['max_volume_gb'] ?? 0).toDouble();
         if (maxGb > 0) {
           double usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
@@ -589,7 +587,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(vertical: 10),
                                     child: Column(
-                                      crossAxisAlignment: CrossAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           item['name'] ?? 'سرور Xray',
@@ -612,7 +610,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
                                   padding: const EdgeInsets.all(8.0),
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    crossAxisAlignment: CrossAlignment.end,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
                                       const Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -711,13 +709,12 @@ class _ServerListScreenState extends State<ServerListScreen> {
                 ],
               ),
             ),
-            // اطلاعات میزان حجم و روزهای باقی‌مانده
             Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
                   'حجم: ${usedGb.toStringAsFixed(2)} / ${maxGb > 0 ? maxGb.toStringAsFixed(1) : "∞"} GB',
-                  style: const TextStyle(color: Colors.white87, fontSize: 11, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: Colors.white.withOpacity(0.87), fontSize: 11, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 2),
                 Text(
