@@ -10,7 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
+shared_preferences: ^2.2.2
   # پکیج قدرتمند Xray v26 با پشتیبانی کامل از XHTTP, REALITY, gRPC, Hysteria2
   flutter_v2ray_client: ^3.5.0
 
