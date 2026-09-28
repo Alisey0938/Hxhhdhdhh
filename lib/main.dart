@@ -36,7 +36,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// بررسی وضعیت لاگین بودن کاربر
 class AuthCheckScreen extends StatefulWidget {
   const AuthCheckScreen({super.key});
 
@@ -80,9 +79,6 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
   }
 }
 
-// ----------------------------------------------------
-// صفحه ورود (LOGIN SCREEN)
-// ----------------------------------------------------
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -123,14 +119,12 @@ class _LoginScreenState extends State<LoginScreen> {
         });
 
         if (foundUserId != null && userData != null) {
-          // بررسی فعال بودن حساب
           if (userData!['active'] != true) {
             _showError('حساب کاربری شما غیرفعال شده است.');
             setState(() => _isLoading = false);
             return;
           }
 
-          // ذخیره ورود
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('user_id', foundUserId!);
 
@@ -214,9 +208,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ----------------------------------------------------
-// صفحه اصلی سرورها و مدیریت حجم/انقضا (SERVER LIST SCREEN)
-// ----------------------------------------------------
 class ServerListScreen extends StatefulWidget {
   final String userId;
   const ServerListScreen({super.key, required this.userId});
@@ -231,7 +222,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
   late V2ray v2ray;
   List<dynamic> _configs = [];
   final Map<String, int> _pings = {};
-  final Map<String, bool> _pingLoading = {};
 
   bool _isLoading = true;
   bool _isConnectingProcess = false;
@@ -239,8 +229,9 @@ class _ServerListScreenState extends State<ServerListScreen> {
   bool _isConnected = false;
   String _statusText = "DISCONNECTED";
 
-  Timer? _trafficTimer;
   Map<String, dynamic>? _userData;
+  int _lastUpload = 0;
+  int _lastDownload = 0;
 
   @override
   void initState() {
@@ -248,12 +239,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
     _initV2Ray();
     _fetchUserDataAndCheck();
     _fetchConfigs();
-  }
-
-  @override
-  void dispose() {
-    _trafficTimer?.cancel();
-    super.dispose();
   }
 
   void _resetToDisconnected() {
@@ -266,7 +251,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
     });
   }
 
-  // ۱. بررسی اعتبار حساب و میزان مصرف
   Future<void> _fetchUserDataAndCheck() async {
     try {
       final res = await http.get(Uri.parse("${firebaseUrl}users/${widget.userId}.json"));
@@ -274,7 +258,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
         final data = json.decode(res.body);
         _userData = data;
 
-        // الف) بررسی انقضای روزانه
         if (data['created_at'] != null && data['max_days'] != null && data['max_days'] > 0) {
           final createdDate = DateTime.parse(data['created_at']);
           final expireDate = createdDate.add(Duration(days: data['max_days']));
@@ -284,7 +267,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
           }
         }
 
-        // ب) بررسی انقضای حجمی (اگر 0 نباشد)
         double maxGb = (data['max_volume_gb'] ?? 0).toDouble();
         int usedBytes = (data['used_bytes'] ?? 0);
         if (maxGb > 0) {
@@ -302,9 +284,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // خروج اجباری و قطع وی‌پی‌ان
   void _logoutUser(String reason) async {
-    _trafficTimer?.cancel();
     try {
       await v2ray.stopV2Ray();
     } catch (_) {}
@@ -320,39 +300,31 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
   }
 
-  // محاسبه ترافيک مصرفی و ارسال به فایربیس
-  void _startTrafficMonitoring() {
-    _trafficTimer?.cancel();
-    _trafficTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-      if (!_isConnected || _userData == null) return;
+  void _updateTrafficUsage(int upload, int download) async {
+    if (!_isConnected || _userData == null) return;
+
+    int newUsage = (upload - _lastUpload) + (download - _lastDownload);
+    if (newUsage > 0 && _lastUpload > 0 && _lastDownload > 0) {
+      int currentUsed = (_userData!['used_bytes'] ?? 0);
+      int totalUsed = currentUsed + newUsage;
+
+      _userData!['used_bytes'] = totalUsed;
+
+      http.patch(
+        Uri.parse("${firebaseUrl}users/${widget.userId}.json"),
+        body: json.encode({"used_bytes": totalUsed}),
+      );
 
       double maxGb = (_userData!['max_volume_gb'] ?? 0).toDouble();
-
-      // گرفتن آمار دقیق هسته
-      var status = await v2ray.getConnectedV2rayStatistics();
-      int newBytes = status.upload + status.download;
-
-      if (newBytes > 0) {
-        int currentUsed = (_userData!['used_bytes'] ?? 0);
-        int totalUsed = currentUsed + newBytes;
-
-        // آپدیت سریع فایربیس
-        await http.patch(
-          Uri.parse("${firebaseUrl}users/${widget.userId}.json"),
-          body: json.encode({"used_bytes": totalUsed}),
-        );
-
-        _userData!['used_bytes'] = totalUsed;
-
-        // بررسی مجدد سقف حجم
-        if (maxGb > 0 && (totalUsed / (1024 * 1024 * 1024)) >= maxGb) {
-          _logoutUser('حجم مجاز شما تمام شد و از حساب خارج شدید.');
-        }
+      if (maxGb > 0 && (totalUsed / (1024 * 1024 * 1024)) >= maxGb) {
+        _logoutUser('حجم مجاز شما تمام شد.');
       }
-    });
+    }
+
+    _lastUpload = upload;
+    _lastDownload = download;
   }
 
-  // ۲. مقداردهی اولیه هسته Xray
   void _initV2Ray() async {
     v2ray = V2ray(
       onStatusChanged: (status) {
@@ -365,9 +337,8 @@ class _ServerListScreenState extends State<ServerListScreen> {
             _statusText = "CONNECTED";
             _isConnectingProcess = false;
           });
-          _startTrafficMonitoring();
+          _updateTrafficUsage(status.upload, status.download);
         } else if (stateUpper == 'DISCONNECTED' || stateUpper == 'STOPPED' || stateUpper == 'IDLE') {
-          _trafficTimer?.cancel();
           _resetToDisconnected();
         } else {
           setState(() => _statusText = stateUpper);
@@ -381,7 +352,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
     );
   }
 
-  // ۳. دریافت لیست سرورها
   Future<void> _fetchConfigs() async {
     setState(() => _isLoading = true);
     try {
@@ -426,8 +396,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
 
     if (configUrl.isEmpty) return;
 
-    if (mounted) setState(() => _pingLoading[configId] = true);
-
     try {
       V2RayURL parser = V2ray.parseFromURL(configUrl);
       int delay = await v2ray.getServerDelay(config: parser.getFullConfiguration(), url: 'https://1.1.1.1');
@@ -444,14 +412,12 @@ class _ServerListScreenState extends State<ServerListScreen> {
       if (mounted) {
         setState(() {
           _pings[configId] = delay;
-          _pingLoading[configId] = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _pings[configId] = -1;
-          _pingLoading[configId] = false;
         });
       }
     }
@@ -464,7 +430,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
     final String configId = item['id']?.toString() ?? item['name'];
 
     if (_isConnected && _connectedConfigId == configId) {
-      _trafficTimer?.cancel();
       _resetToDisconnected();
       try {
         await v2ray.stopV2Ray();
@@ -475,6 +440,8 @@ class _ServerListScreenState extends State<ServerListScreen> {
     setState(() {
       _isConnectingProcess = true;
       _connectedConfigId = configId;
+      _lastUpload = 0;
+      _lastDownload = 0;
     });
 
     try {
@@ -535,7 +502,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
       ),
       body: Column(
         children: [
-          // کارت نمایش وضعیت اتصال و حجم مصرفی
           Container(
             width: double.infinity,
             margin: const EdgeInsets.all(16),
@@ -571,8 +537,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
               ],
             ),
           ),
-
-          // لیست کانفیگ‌ها
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)))
