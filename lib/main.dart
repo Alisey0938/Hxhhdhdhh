@@ -4,15 +4,12 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter_v2ray/flutter_v2ray.dart';
 
 void main() async {
-  // اطمینان از مقداردهی اولیه نیتیو قبل از اجرای برنامه برای جلوگیری از صفحه سیاه
   WidgetsFlutterBinding.ensureInitialized();
-  
   try {
     await Firebase.initializeApp();
   } catch (e) {
     debugPrint("Firebase init error: $e");
   }
-
   runApp(const XrayUltraApp());
 }
 
@@ -21,7 +18,6 @@ class XrayUltraApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // پالت رنگی: گرانیت سیاه، بنفش و سبز یاقوتی
     const Color graniteBlack = Color(0xFF121417);
     const Color graniteCard = Color(0xFF1E2228);
     const Color rubyGreen = Color(0xFF00A86B);
@@ -70,7 +66,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool isConnected = false;
   String v2rayStatus = "DISCONNECTED";
   String pingResult = "0 ms";
-  String configVless = "";
+  List<String> configList = [];
+  int selectedConfigIndex = 0;
 
   final DatabaseReference _dbRef = FirebaseDatabase.instanceFor(
     app: Firebase.app(),
@@ -80,11 +77,11 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _initV2Ray();
-    _fetchConfigFromFirebase();
+    _initV2RayEngine();
+    _fetchConfigsFromFirebase();
   }
 
-  void _initV2Ray() {
+  void _initV2RayEngine() {
     flutterV2ray = FlutterV2ray(
       onStatusChanged: (status) {
         setState(() {
@@ -96,50 +93,89 @@ class _HomeScreenState extends State<HomeScreen> {
     flutterV2ray.initializeV2Ray();
   }
 
-  Future<void> _fetchConfigFromFirebase() async {
+  Future<void> _fetchConfigsFromFirebase() async {
     try {
-      final snapshot = await _dbRef.child("configs/active_config").get();
+      final snapshot = await _dbRef.child("configs").get();
       if (snapshot.exists) {
+        List<String> tempConfigs = [];
+        if (snapshot.value is Map) {
+          final data = Map<String, dynamic>.from(snapshot.value as Map);
+          data.forEach((key, value) {
+            if (value is String && value.trim().isNotEmpty) {
+              tempConfigs.add(value.trim());
+            } else if (value is Map && value.containsKey('url')) {
+              tempConfigs.add(value['url'].toString().trim());
+            }
+          });
+        } else if (snapshot.value is List) {
+          for (var item in snapshot.value as List) {
+            if (item != null) tempConfigs.add(item.toString().trim());
+          }
+        }
+        
         setState(() {
-          configVless = snapshot.value.toString();
+          configList = tempConfigs;
         });
       }
     } catch (e) {
-      debugPrint("Error fetching config: $e");
+      debugPrint("Error fetching configs: $e");
     }
   }
 
   Future<void> _toggleConnection() async {
     if (isConnected) {
       await flutterV2ray.stopV2Ray();
-    } else {
-      if (configVless.isNotEmpty) {
-        if (await flutterV2ray.requestPermission()) {
-          final V2RayURL parseResult = FlutterV2ray.parseFromURL(configVless);
-          await flutterV2ray.startV2Ray(
-            remark: parseResult.remark,
-            config: parseResult.fullURL,
-            blockedApps: null,
-            bypassSubnets: null,
-            proxyOnly: false,
-          );
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('کانفیگی یافت نشد! در حال تلاش مجدد...')),
+      return;
+    }
+
+    if (configList.isEmpty) {
+      _showSnackBar('هیچ کانفیگی از سرور دریافت نشده است!');
+      _fetchConfigsFromFirebase();
+      return;
+    }
+
+    final String rawConfig = configList[selectedConfigIndex];
+
+    try {
+      if (await flutterV2ray.requestPermission()) {
+        // پشتیبانی مستقیم از تمام لینک‌های vless, vmess, trojan, ss, xhttp, ws
+        final V2RayURL parseResult = FlutterV2ray.parseFromURL(rawConfig);
+        
+        await flutterV2ray.startV2Ray(
+          remark: parseResult.remark.isNotEmpty ? parseResult.remark : "Xray Ultra Server",
+          config: parseResult.fullURL,
+          blockedApps: null,
+          bypassSubnets: null,
+          proxyOnly: false,
         );
-        _fetchConfigFromFirebase();
       }
+    } catch (e) {
+      debugPrint("V2Ray Launch Error: $e");
+      _showSnackBar('خطا در اجرای این کانفیگ. در حال تست هسته...');
+      await flutterV2ray.stopV2Ray();
     }
   }
 
   Future<void> _getPing() async {
     if (isConnected) {
-      final delay = await flutterV2ray.getConnectedServerDelay();
-      setState(() {
-        pingResult = "$delay ms";
-      });
+      try {
+        final delay = await flutterV2ray.getConnectedServerDelay();
+        setState(() {
+          pingResult = "$delay ms";
+        });
+      } catch (_) {
+        setState(() {
+          pingResult = "Error";
+        });
+      }
     }
+  }
+
+  void _showSnackBar(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: Colors.redAccent),
+    );
   }
 
   @override
@@ -149,15 +185,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('XRAY ULTRA'),
+        title: const Text('XRAY ULTRA (FULL CORE)'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: rubyGreen),
+            onPressed: _fetchConfigsFromFirebase,
+          )
+        ],
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.all(16.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // کارت وضعیت اتصال و پینگ
+              // کارت وضعیت اتصال
               Card(
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
@@ -176,23 +217,20 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           Text(
                             "وضعیت: $v2rayStatus",
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 6),
                           Text(
                             "پینگ: $pingResult",
                             style: TextStyle(
-                              fontSize: 14,
+                              fontSize: 13,
                               color: isConnected ? rubyGreen : Colors.grey,
                             ),
                           ),
                         ],
                       ),
                       IconButton(
-                        icon: const Icon(Icons.refresh, color: rubyGreen),
+                        icon: const Icon(Icons.speed, color: rubyGreen),
                         onPressed: _getPing,
                       )
                     ],
@@ -200,13 +238,59 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              // دکمه اتصال اصلی
+              const SizedBox(height: 10),
+
+              // لیست سرورهای دریافت شده از Firebase
+              Expanded(
+                child: configList.isEmpty
+                    ? const Center(child: CircularProgressIndicator(color: deepPurple))
+                    : ListView.builder(
+                        itemCount: configList.length,
+                        itemBuilder: (context, index) {
+                          final bool isSelected = selectedConfigIndex == index;
+                          return Card(
+                            color: isSelected ? deepPurple.withOpacity(0.2) : null,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: isSelected ? rubyGreen : Colors.transparent,
+                                width: 1,
+                              ),
+                            ),
+                            child: ListTile(
+                              title: Text(
+                                "سرور شماره ${index + 1}",
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              subtitle: Text(
+                                configList[index],
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.grey, fontSize: 11),
+                              ),
+                              trailing: isSelected
+                                  ? const Icon(Icons.check_circle, color: rubyGreen)
+                                  : null,
+                              onTap: () {
+                                setState(() {
+                                  selectedConfigIndex = index;
+                                });
+                              },
+                            ),
+                          );
+                        },
+                      ),
+              ),
+
+              const SizedBox(height: 10),
+
+              // دکمه اتصال
               GestureDetector(
                 onTap: _toggleConnection,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
-                  width: 160,
-                  height: 160,
+                  width: 120,
+                  height: 120,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: Theme.of(context).cardColor,
@@ -217,30 +301,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     boxShadow: [
                       BoxShadow(
                         color: (isConnected ? rubyGreen : deepPurple).withOpacity(0.4),
-                        blurRadius: 20,
+                        blurRadius: 15,
                         spreadRadius: 2,
                       ),
                     ],
                   ),
                   child: Icon(
                     Icons.power_settings_new,
-                    size: 70,
+                    size: 55,
                     color: isConnected ? rubyGreen : deepPurple,
                   ),
                 ),
               ),
-
-              // اطلاعات زیرین
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Text(
-                  configVless.isNotEmpty
-                      ? "کانفیگ فعال دریافت شد"
-                      : "در حال دریافت کانفیگ از سرور...",
-                  style: const TextStyle(color: Colors.grey, fontSize: 13),
-                  textAlign: TextAlign.center,
-                ),
-              ),
+              const SizedBox(height: 10),
             ],
           ),
         ),
