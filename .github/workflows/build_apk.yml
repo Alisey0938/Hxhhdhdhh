@@ -21,17 +21,10 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup Android SDK 35
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: 'latest'
-          accept-android-sdk-licenses: true
-          packages: 'platforms;android-35 build-tools;35.0.0'
-
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.6'
+          flutter-version: '3.22.3'
           channel: 'stable'
           cache: true
 
@@ -40,10 +33,12 @@ jobs:
           rm -rf android
           flutter create --platforms=android --org com.v2ray --project-name xray_ultra .
 
-      - name: Fix minSdkVersion and compileSdkVersion
+      - name: Configure Android SDK and Gradle Versions
         run: |
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle
           sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/g' android/app/build.gradle
+          sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 35/g' android/app/build.gradle
+          sed -i 's/id "com.android.application" version ".*"/id "com.android.application" version "8.3.2"/g' android/settings.gradle
 
       - name: Install Dependencies
         run: flutter pub get
