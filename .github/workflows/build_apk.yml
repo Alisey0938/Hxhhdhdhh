@@ -24,13 +24,18 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.16.9'
+          flutter-version: '3.19.6'
           channel: 'stable'
           cache: true
 
       - name: Fix Android Embedding V2
         run: |
           flutter create --platforms=android --project-name=xray_ultra .
+
+      - name: Upgrade Gradle Wrapper
+        run: |
+          cd android
+          ./gradlew wrapper --gradle-version=8.2
 
       - name: Install Dependencies
         run: flutter pub get
