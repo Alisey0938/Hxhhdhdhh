@@ -13,9 +13,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   firebase_core: ^3.6.0
   firebase_database: ^11.1.4
-  flutter_v2ray_client:
-    git:
-      url: https://github.com/v2fly/flutter_v2ray_client.git
+  flutter_v2ray_client: ^0.2.1
 
 dev_dependencies:
   flutter_test:
