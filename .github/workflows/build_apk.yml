@@ -24,9 +24,13 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.6'
+          flutter-version: '3.16.9'
           channel: 'stable'
           cache: true
+
+      - name: Fix Android Embedding V2
+        run: |
+          flutter create --platforms=android .
 
       - name: Install Dependencies
         run: flutter pub get
