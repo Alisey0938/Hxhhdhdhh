@@ -28,10 +28,15 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Rebuild Android V2 Structure
+      - name: Rebuild Android Project
         run: |
           rm -rf android
           flutter create --platforms=android --org com.v2ray --project-name xray_ultra .
+
+      - name: Fix minSdkVersion and compileSdkVersion
+        run: |
+          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle
+          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 34/g' android/app/build.gradle
 
       - name: Install Dependencies
         run: flutter pub get
