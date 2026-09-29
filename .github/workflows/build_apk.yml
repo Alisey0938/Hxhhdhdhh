@@ -28,6 +28,11 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Rebuild Android V2 Structure
+        run: |
+          rm -rf android
+          flutter create --platforms=android --org com.v2ray --project-name xray_ultra .
+
       - name: Install Dependencies
         run: flutter pub get
 
