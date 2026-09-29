@@ -7,12 +7,11 @@ class AuthService {
   static final DatabaseReference _db = FirebaseDatabase.instance.ref();
   static StreamSubscription<DatabaseEvent>? _userSubscription;
 
-  /// شروع شنود لحظه‌ای وضعیت کاربر از فایربیس
+  /// شنود زنده وضعیت کاربر از فایربیس
   static void startUserListener(BuildContext context, String userId, FlutterV2ray v2rayClient) {
     _userSubscription?.cancel();
 
     _userSubscription = _db.child('users/$userId').onValue.listen((event) async {
-      // بررسی حذف شدن کاربر یا غیرفعال شدن حساب
       if (!event.snapshot.exists) {
         await _forceLogout(context, v2rayClient, "حساب کاربری شما حذف شده است.");
       } else {
@@ -26,13 +25,13 @@ class AuthService {
     });
   }
 
-  /// متوقف کردن شنود
+  /// توقف شنود
   static void stopUserListener() {
     _userSubscription?.cancel();
     _userSubscription = null;
   }
 
-  /// خروج اجباری و قطع VPN
+  /// خروج اجباری و قطع وی‌پی‌ان
   static Future<void> _forceLogout(BuildContext context, FlutterV2ray v2rayClient, String message) async {
     stopUserListener();
 
@@ -44,7 +43,7 @@ class AuthService {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: const TextStyle(fontFamily: 'Vazir', color: Colors.white)),
+        content: Text(message, style: const TextStyle(color: Colors.white)),
         backgroundColor: Colors.redAccent,
         duration: const Duration(seconds: 4),
       ),
@@ -53,7 +52,7 @@ class AuthService {
     Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
   }
 
-  /// خروج دستی با دکمه Logout
+  /// خروج دستی
   static Future<void> logoutManual(BuildContext context, FlutterV2ray v2rayClient) async {
     stopUserListener();
 
