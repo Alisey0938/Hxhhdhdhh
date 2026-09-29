@@ -5,41 +5,35 @@ on:
     branches:
       - main
       - master
-  workflow_dispatch: # امکان اجرای دستی برنامه از داخل گیتهاب
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # ۱. دریافت کدهای پروژه از گیتهاب
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ۲. نصب و تنظیم جاوا (JDK)
       - name: Set up Java Development Kit
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      # ۳. نصب و تنظیم فلاتر (Flutter)
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.x'
+          flutter-version: '3.19.6'
           channel: 'stable'
           cache: true
 
-      # ۴. دریافت کتابخانه‌ها و دپندنسی‌ها
       - name: Install Dependencies
         run: flutter pub get
 
-      # ۵. ساخت فایل APK Release
       - name: Build APK
         run: flutter build apk --release --no-tree-shake-icons
 
-      # ۶. آپلود و ذخیره فایل APK جهت دانلود
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
