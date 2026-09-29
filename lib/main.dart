@@ -180,8 +180,8 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> configList = [];
   int selectedConfigIndex = 0;
 
-  double totalUsedMB = 0.0;
-  Timer? _trafficTimer;
+  int _lastUpload = 0;
+  int _lastDownload = 0;
   StreamSubscription<DatabaseEvent>? _userStatusSubscription;
 
   final DatabaseReference _dbRef = FirebaseDatabase.instanceFor(
@@ -199,12 +199,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    _trafficTimer?.cancel();
     _userStatusSubscription?.cancel();
     super.dispose();
   }
 
-  // شنود زنده وضعیت کاربر در دیتابیس (حذف یا غیرفعال شدن)
+  // شنود زنده وضعیت کاربر در دیتابیس (حذف یا غیرفعال شدن توسط ادمین)
   void _listenToUserStatus() {
     _userStatusSubscription = _dbRef.child("users").child(widget.username).onValue.listen((event) async {
       if (!event.snapshot.exists) {
@@ -219,9 +218,8 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // قطع فوری v2ray و هدایت کاربر به صفحه لاگین
+  // قطع فوری اتصال و هدایت به صفحه لاگین
   Future<void> _forceLogout(String reason) async {
-    _trafficTimer?.cancel();
     if (isConnected) {
       await flutterV2ray.stopV2Ray();
     }
@@ -243,40 +241,24 @@ class _HomeScreenState extends State<HomeScreen> {
           isConnected = status.state == "CONNECTED";
         });
 
-        if (isConnected) {
-          _startTrafficTracker();
-        } else {
-          _trafficTimer?.cancel();
+        // دریافت لایو و لحظه‌ای آمار ترافیک و ثبت مصرف در دیتابیس
+        if (status.upload > _lastUpload || status.download > _lastDownload) {
+          final int deltaUpload = status.upload - _lastUpload;
+          final int deltaDownload = status.download - _lastDownload;
+          _lastUpload = status.upload;
+          _lastDownload = status.download;
+
+          final double deltaMB = (deltaUpload + deltaDownload) / (1024 * 1024);
+          if (deltaMB > 0) {
+            _dbRef.child("users").child(widget.username).update({
+              "usedTrafficMB": ServerValue.increment(deltaMB),
+              "lastOnline": ServerValue.timestamp,
+            });
+          }
         }
       },
     );
     flutterV2ray.initializeV2Ray();
-  }
-
-  // ثبت و بروزرسانی حجم مصرفی کاربر در Firebase
-  void _startTrafficTracker() {
-    _trafficTimer?.cancel();
-    _trafficTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-      if (isConnected) {
-        try {
-          final upload = await flutterV2ray.getCoreUpload();
-          final download = await flutterV2ray.getCoreDownload();
-          final double currentSessionMB = (upload + download) / (1024 * 1024);
-
-          setState(() {
-            totalUsedMB += currentSessionMB;
-          });
-
-          // ارسال حجم مصرف شده به پنل ادمین
-          await _dbRef.child("users").child(widget.username).update({
-            "usedTrafficMB": ServerValue.increment(currentSessionMB),
-            "lastOnline": ServerValue.timestamp,
-          });
-        } catch (e) {
-          debugPrint("Traffic tracking error: $e");
-        }
-      }
-    });
   }
 
   Future<void> _fetchConfigsFromFirebase() async {
@@ -310,6 +292,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _toggleConnection() async {
     if (isConnected) {
       await flutterV2ray.stopV2Ray();
+      _lastUpload = 0;
+      _lastDownload = 0;
       return;
     }
 
@@ -327,7 +311,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         await flutterV2ray.startV2Ray(
           remark: parseResult.remark.isNotEmpty ? parseResult.remark : "Xray Ultra Server",
-          config: rawConfig, // ارسال مستقیم رشته کانفیگ رفع‌کننده خطای کامپایل fullURL
+          config: rawConfig,
           blockedApps: null,
           bypassSubnets: null,
           proxyOnly: false,
@@ -371,7 +355,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Text('Xray Ultra (${widget.username})'),
         actions: [
-          // دکمه خروج از حساب کاربری (Logout)
+          // دکمه خروج (Logout)
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.redAccent),
             onPressed: () => _forceLogout("از حساب کاربری خارج شدید."),
