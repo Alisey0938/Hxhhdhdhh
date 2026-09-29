@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -44,18 +45,128 @@ class XrayUltraApp extends StatelessWidget {
           centerTitle: true,
           titleTextStyle: TextStyle(
             color: Colors.white,
-            fontSize: 20,
+            fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
         ),
       ),
-      home: const HomeScreen(),
+      home: const LoginScreen(),
     );
   }
 }
 
+// ==================== صفحه لاگین ====================
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final TextEditingController _usernameController = TextEditingController();
+  bool _isLoading = false;
+
+  final DatabaseReference _dbRef = FirebaseDatabase.instanceFor(
+    app: Firebase.app(),
+    databaseURL: 'https://pane-dcc9a-default-rtdb.firebaseio.com',
+  ).ref();
+
+  Future<void> _login() async {
+    final username = _usernameController.text.trim();
+    if (username.isEmpty) {
+      _showSnackBar("لطفاً نام کاربری را وارد کنید");
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final snapshot = await _dbRef.child("users").child(username).get();
+      if (snapshot.exists) {
+        final userData = Map<String, dynamic>.from(snapshot.value as Map);
+        final bool isActive = userData['active'] ?? true;
+
+        if (!isActive) {
+          _showSnackBar("حساب کاربری شما غیرفعال شده است.");
+        } else {
+          if (!mounted) return;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => HomeScreen(username: username),
+            ),
+          );
+        }
+      } else {
+        _showSnackBar("کاربری با این مشخصات یافت نشد.");
+      }
+    } catch (e) {
+      _showSnackBar("خطا در برقراری ارتباط با سرور");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showSnackBar(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: Colors.redAccent),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const Color deepPurple = Color(0xFF8A2BE2);
+    const Color rubyGreen = Color(0xFF00A86B);
+
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.shield_outlined, size: 80, color: rubyGreen),
+              const SizedBox(height: 20),
+              const Text("ورود به Xray Ultra",
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 30),
+              TextField(
+                controller: _usernameController,
+                decoration: InputDecoration(
+                  labelText: "نام کاربری",
+                  prefixIcon: const Icon(Icons.person, color: deepPurple),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: deepPurple,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _isLoading ? null : _login,
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text("ورود", style: TextStyle(fontSize: 16, color: Colors.white)),
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== صفحه اصلی برنامه ====================
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final String username;
+  const HomeScreen({super.key, required this.username});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -69,6 +180,10 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> configList = [];
   int selectedConfigIndex = 0;
 
+  double totalUsedMB = 0.0;
+  Timer? _trafficTimer;
+  StreamSubscription<DatabaseEvent>? _userStatusSubscription;
+
   final DatabaseReference _dbRef = FirebaseDatabase.instanceFor(
     app: Firebase.app(),
     databaseURL: 'https://pane-dcc9a-default-rtdb.firebaseio.com',
@@ -79,6 +194,45 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _initV2RayEngine();
     _fetchConfigsFromFirebase();
+    _listenToUserStatus();
+  }
+
+  @override
+  void dispose() {
+    _trafficTimer?.cancel();
+    _userStatusSubscription?.cancel();
+    super.dispose();
+  }
+
+  // شنود زنده وضعیت کاربر در دیتابیس (حذف یا غیرفعال شدن)
+  void _listenToUserStatus() {
+    _userStatusSubscription = _dbRef.child("users").child(widget.username).onValue.listen((event) async {
+      if (!event.snapshot.exists) {
+        _forceLogout("حساب کاربری شما توسط ادمین حذف گردید.");
+      } else {
+        final userData = Map<String, dynamic>.from(event.snapshot.value as Map);
+        final bool isActive = userData['active'] ?? true;
+        if (!isActive) {
+          _forceLogout("حساب کاربری شما توسط ادمین غیرفعال گردید.");
+        }
+      }
+    });
+  }
+
+  // قطع فوری v2ray و هدایت کاربر به صفحه لاگین
+  Future<void> _forceLogout(String reason) async {
+    _trafficTimer?.cancel();
+    if (isConnected) {
+      await flutterV2ray.stopV2Ray();
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(reason), backgroundColor: Colors.redAccent),
+    );
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+    );
   }
 
   void _initV2RayEngine() {
@@ -88,9 +242,41 @@ class _HomeScreenState extends State<HomeScreen> {
           v2rayStatus = status.state;
           isConnected = status.state == "CONNECTED";
         });
+
+        if (isConnected) {
+          _startTrafficTracker();
+        } else {
+          _trafficTimer?.cancel();
+        }
       },
     );
     flutterV2ray.initializeV2Ray();
+  }
+
+  // ثبت و بروزرسانی حجم مصرفی کاربر در Firebase
+  void _startTrafficTracker() {
+    _trafficTimer?.cancel();
+    _trafficTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      if (isConnected) {
+        try {
+          final upload = await flutterV2ray.getCoreUpload();
+          final download = await flutterV2ray.getCoreDownload();
+          final double currentSessionMB = (upload + download) / (1024 * 1024);
+
+          setState(() {
+            totalUsedMB += currentSessionMB;
+          });
+
+          // ارسال حجم مصرف شده به پنل ادمین
+          await _dbRef.child("users").child(widget.username).update({
+            "usedTrafficMB": ServerValue.increment(currentSessionMB),
+            "lastOnline": ServerValue.timestamp,
+          });
+        } catch (e) {
+          debugPrint("Traffic tracking error: $e");
+        }
+      }
+    });
   }
 
   Future<void> _fetchConfigsFromFirebase() async {
@@ -112,7 +298,6 @@ class _HomeScreenState extends State<HomeScreen> {
             if (item != null) tempConfigs.add(item.toString().trim());
           }
         }
-        
         setState(() {
           configList = tempConfigs;
         });
@@ -129,7 +314,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (configList.isEmpty) {
-      _showSnackBar('هیچ کانفیگی از سرور دریافت نشده است!');
+      _showSnackBar('هیچ کانفیگی یافت نشد!');
       _fetchConfigsFromFirebase();
       return;
     }
@@ -138,12 +323,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       if (await flutterV2ray.requestPermission()) {
-        // پشتیبانی مستقیم از تمام لینک‌های vless, vmess, trojan, ss, xhttp, ws
         final V2RayURL parseResult = FlutterV2ray.parseFromURL(rawConfig);
-        
+
         await flutterV2ray.startV2Ray(
           remark: parseResult.remark.isNotEmpty ? parseResult.remark : "Xray Ultra Server",
-          config: parseResult.fullURL,
+          config: rawConfig, // ارسال مستقیم رشته کانفیگ رفع‌کننده خطای کامپایل fullURL
           blockedApps: null,
           bypassSubnets: null,
           proxyOnly: false,
@@ -151,7 +335,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       debugPrint("V2Ray Launch Error: $e");
-      _showSnackBar('خطا در اجرای این کانفیگ. در حال تست هسته...');
+      _showSnackBar('خطا در اجرای کانفیگ انتخاب‌شده');
       await flutterV2ray.stopV2Ray();
     }
   }
@@ -185,8 +369,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('XRAY ULTRA (FULL CORE)'),
+        title: Text('Xray Ultra (${widget.username})'),
         actions: [
+          // دکمه خروج از حساب کاربری (Logout)
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.redAccent),
+            onPressed: () => _forceLogout("از حساب کاربری خارج شدید."),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh, color: rubyGreen),
             onPressed: _fetchConfigsFromFirebase,
@@ -198,7 +387,6 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              // کارت وضعیت اتصال
               Card(
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
@@ -240,7 +428,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 10),
 
-              // لیست سرورهای دریافت شده از Firebase
               Expanded(
                 child: configList.isEmpty
                     ? const Center(child: CircularProgressIndicator(color: deepPurple))
@@ -284,13 +471,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 10),
 
-              // دکمه اتصال
               GestureDetector(
                 onTap: _toggleConnection,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
-                  width: 120,
-                  height: 120,
+                  width: 110,
+                  height: 110,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: Theme.of(context).cardColor,
@@ -308,7 +494,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   child: Icon(
                     Icons.power_settings_new,
-                    size: 55,
+                    size: 50,
                     color: isConnected ? rubyGreen : deepPurple,
                   ),
                 ),
