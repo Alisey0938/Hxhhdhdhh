@@ -281,6 +281,8 @@ class _ServerListScreenState extends State<ServerListScreen> {
       if (res.statusCode == 200 && res.body != 'null') {
         final data = json.decode(res.body);
         _userData = data;
+        
+        // دریافت دقیق حجم مصرف‌شده از پنل فایربیس
         _accumulatedUsedBytes = (data['used_bytes'] ?? 0);
 
         if (data['created_at'] != null && data['max_days'] != null && data['max_days'] > 0) {
@@ -341,7 +343,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
       if (mounted) setState(() {});
 
       try {
-        http.patch(
+        await http.patch(
           Uri.parse("${firebaseUrl}users/${widget.userId}.json"),
           body: json.encode({"used_bytes": _accumulatedUsedBytes}),
         );
@@ -499,16 +501,14 @@ class _ServerListScreenState extends State<ServerListScreen> {
           proxyOnly: false,
         );
 
-        if (mounted) {
-          setState(() {
-            _isConnected = true;
-            _isConnectingProcess = false;
-          });
-        }
+        // بررسی وضعیت اتصال واقعی در onStatusChanged ثبت خواهد شد.
       } else {
         setState(() => _isConnectingProcess = false);
       }
     } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در اتصال: $e'), backgroundColor: Colors.redAccent),
+      );
       setState(() => _isConnectingProcess = false);
     }
   }
