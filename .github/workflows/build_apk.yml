@@ -26,14 +26,16 @@ jobs:
         with:
           flutter-version: '3.22.3'
           channel: 'stable'
-          cache: true
+
+      - name: Get Dependencies First
+        run: flutter pub get
 
       - name: Rebuild Android Project
         run: |
           rm -rf android
           flutter create --platforms=android --org com.v2ray --project-name xray_ultra .
 
-      - name: Configure Gradle, NDK and Android SDK Versions
+      - name: Configure Gradle, NDK and SDK Versions
         run: |
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle
           sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/g' android/app/build.gradle
@@ -42,10 +44,8 @@ jobs:
           sed -i 's/id "com.android.application" version ".*"/id "com.android.application" version "8.3.2"/g' android/settings.gradle
           printf "distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\nzipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\ndistributionUrl=https\://services.gradle.org/distributions/gradle-8.4-all.zip\n" > android/gradle/wrapper/gradle-wrapper.properties
 
-      - name: Clean and Fetch Dependencies
-        run: |
-          flutter clean
-          flutter pub get
+      - name: Fetch Dependencies Again
+        run: flutter pub get
 
       - name: Build APK
         run: flutter build apk --release --no-tree-shake-icons
