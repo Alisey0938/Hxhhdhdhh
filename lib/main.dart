@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:flutter_v2ray_client/flutter_v2ray_client.dart';
+import 'package:flutter_v2ray/flutter_v2ray.dart';
 import 'services/auth_service.dart';
 
 void main() async {
@@ -37,7 +37,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// صفحه ورود (LoginScreen)
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
 
@@ -47,8 +46,16 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _usernameController = TextEditingController();
-  final FlutterV2ray _v2rayClient = FlutterV2ray();
+  final FlutterV2ray _v2rayClient = FlutterV2ray(
+    onStatusChanged: (status) {},
+  );
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _v2rayClient.initializeV2Ray();
+  }
 
   Future<void> _login() async {
     final username = _usernameController.text.trim();
@@ -139,7 +146,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-/// صفحه اصلی برنامه (HomeScreen)
 class HomeScreen extends StatefulWidget {
   final String userId;
   final FlutterV2ray v2rayClient;
@@ -160,7 +166,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // فعال‌سازی شنود زنده فایربیس (در صورت غیرفعال یا حذف کاربر، خودکار قطع و خروج می‌شود)
     AuthService.startUserListener(context, widget.userId, widget.v2rayClient);
   }
 
@@ -176,7 +181,6 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('Xray Ultra'),
         centerTitle: true,
-        // دکمه خروج در بالا گوشه سمت چپ
         leading: IconButton(
           icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
           tooltip: 'خروج از حساب',
