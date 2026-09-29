@@ -1,6 +1,6 @@
 name: xray_ultra
 description: "A new Flutter Xray client application with Firebase Realtime sync."
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+publish_to: 'none'
 
 version: 1.0.0+1
 
@@ -11,16 +11,13 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # آیکون‌های استاندارد متریال
   cupertino_icons: ^1.0.8
 
-  # آخرین نسخه پلاگین v2ray جهت پشتیبانی از ترانسپورت‌های جدید (xhttp و غیره)
-  flutter_v2ray_client: ^0.2.2
+  # استفاده از نسخه موجود و معتبر
+  flutter_v2ray_client: ^3.5.0
 
-  # ارتباط با فایربیس و دریافت کانفیگ‌ها و به‌روزرسانی حجم
   http: ^1.2.0
 
-  # ذخیره‌سازی نشست کاربر و آیدی در حافظه محلی
   shared_preferences: ^2.2.2
 
 dev_dependencies:
@@ -31,7 +28,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
-  # در صورت وجود تصویر یا لوگو برای نوتیفیکیشن یا برنامه‌ها می‌توانید مسیر زیر را فعال کنید:
-  # assets:
-  #   - assets/
