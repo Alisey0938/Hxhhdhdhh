@@ -32,6 +32,10 @@ jobs:
         run: |
           flutter create --platforms=android --project-name=xray_ultra .
 
+      - name: Set Gradle Version to 8.2
+        run: |
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.2-bin.zip" > android/gradle/wrapper/gradle-wrapper.properties
+
       - name: Install Dependencies
         run: flutter pub get
 
