@@ -27,25 +27,15 @@ jobs:
           flutter-version: '3.22.3'
           channel: 'stable'
 
-      - name: Get Dependencies First
+      - name: Install Dependencies
         run: flutter pub get
 
-      - name: Rebuild Android Project
+      - name: Configure Gradle and Android SDK
         run: |
-          rm -rf android
-          flutter create --platforms=android --org com.v2ray --project-name xray_ultra .
-
-      - name: Configure Gradle, NDK and SDK Versions
-        run: |
-          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle
-          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/g' android/app/build.gradle
-          sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 35/g' android/app/build.gradle
-          sed -i '/android {/a \    ndkVersion "25.1.8937393"' android/app/build.gradle
-          sed -i 's/id "com.android.application" version ".*"/id "com.android.application" version "8.3.2"/g' android/settings.gradle
+          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle || true
+          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/g' android/app/build.gradle || true
+          sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 35/g' android/app/build.gradle || true
           printf "distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\nzipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\ndistributionUrl=https\://services.gradle.org/distributions/gradle-8.4-all.zip\n" > android/gradle/wrapper/gradle-wrapper.properties
-
-      - name: Fetch Dependencies Again
-        run: flutter pub get
 
       - name: Build APK
         run: flutter build apk --release --no-tree-shake-icons
