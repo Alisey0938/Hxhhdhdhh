@@ -30,7 +30,7 @@ jobs:
 
       - name: Fix Android Embedding V2
         run: |
-          flutter create --platforms=android .
+          flutter create --platforms=android --project-name=xray_ultra .
 
       - name: Install Dependencies
         run: flutter pub get
