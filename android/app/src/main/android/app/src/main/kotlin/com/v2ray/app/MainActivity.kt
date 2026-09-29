@@ -1,4 +1,4 @@
-package com.example.xray_ultra // نام پکیج خود را بگذارید
+package com.example.xray_ultra
 
 import io.flutter.embedding.android.FlutterActivity
 
