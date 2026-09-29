@@ -32,10 +32,9 @@ jobs:
         run: |
           flutter create --platforms=android --project-name=xray_ultra .
 
-      - name: Upgrade Gradle Wrapper
+      - name: Force Gradle 8.2
         run: |
-          cd android
-          ./gradlew wrapper --gradle-version=8.2
+          sed -i 's/gradle-.*-all.zip/gradle-8.2-all.zip/g' android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Install Dependencies
         run: flutter pub get
