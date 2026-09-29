@@ -24,17 +24,9 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.6'
+          flutter-version: '3.22.x'
           channel: 'stable'
           cache: true
-
-      - name: Fix Android Embedding V2
-        run: |
-          flutter create --platforms=android --project-name=xray_ultra .
-
-      - name: Set Gradle Version to 8.2
-        run: |
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.2-bin.zip" > android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Install Dependencies
         run: flutter pub get
