@@ -6,11 +6,24 @@ import 'package:flutter_v2ray/flutter_v2ray.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    await Firebase.initializeApp();
-  } catch (e) {
-    debugPrint("Firebase init error: $e");
-  }
+  
+  // مدیریت خطاهای ناشناخته فلاتر برای جلوگیری از صفحه خاکستری
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF121417),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            "خطا در بارگذاری برنامه:\n${details.exception}",
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+          ),
+        ),
+      ),
+    );
+  };
+
   runApp(const XrayUltraApp());
 }
 
@@ -50,8 +63,87 @@ class XrayUltraApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const LoginScreen(),
+      home: const FirebaseInitWrapper(),
     );
+  }
+}
+
+// ==================== رپر راه‌اندازی ایمن فایربیس ====================
+class FirebaseInitWrapper extends StatefulWidget {
+  const FirebaseInitWrapper({super.key});
+
+  @override
+  State<FirebaseInitWrapper> createState() => _FirebaseInitWrapperState();
+}
+
+class _FirebaseInitWrapperState extends State<FirebaseInitWrapper> {
+  bool _isInitialized = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupFirebase();
+  }
+
+  Future<void> _setupFirebase() async {
+    try {
+      await Firebase.initializeApp();
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_errorMessage != null) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, color: Colors.redAccent, size: 60),
+                const SizedBox(height: 16),
+                const Text("خطا در اتصال به Firebase"),
+                const SizedBox(height: 8),
+                Text(_errorMessage!, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _errorMessage = null;
+                    });
+                    _setupFirebase();
+                  },
+                  child: const Text("تلاش مجدد"),
+                )
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (!_isInitialized) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF8A2BE2)),
+        ),
+      );
+    }
+
+    return const LoginScreen();
   }
 }
 
@@ -67,10 +159,10 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _usernameController = TextEditingController();
   bool _isLoading = false;
 
-  final DatabaseReference _dbRef = FirebaseDatabase.instanceFor(
-    app: Firebase.app(),
-    databaseURL: 'https://pane-dcc9a-default-rtdb.firebaseio.com',
-  ).ref();
+  DatabaseReference get _dbRef => FirebaseDatabase.instanceFor(
+        app: Firebase.app(),
+        databaseURL: 'https://pane-dcc9a-default-rtdb.firebaseio.com',
+      ).ref();
 
   Future<void> _login() async {
     final username = _usernameController.text.trim();
@@ -83,7 +175,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final snapshot = await _dbRef.child("users").child(username).get();
-      if (snapshot.exists) {
+      if (snapshot.exists && snapshot.value != null) {
         final userData = Map<String, dynamic>.from(snapshot.value as Map);
         final bool isActive = userData['active'] ?? true;
 
@@ -102,7 +194,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _showSnackBar("کاربری با این مشخصات یافت نشد.");
       }
     } catch (e) {
-      _showSnackBar("خطا در برقراری ارتباط با سرور");
+      _showSnackBar("خطا در برقراری ارتباط با سرور: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -122,7 +214,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     return Scaffold(
       body: Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -184,10 +276,10 @@ class _HomeScreenState extends State<HomeScreen> {
   int _lastDownload = 0;
   StreamSubscription<DatabaseEvent>? _userStatusSubscription;
 
-  final DatabaseReference _dbRef = FirebaseDatabase.instanceFor(
-    app: Firebase.app(),
-    databaseURL: 'https://pane-dcc9a-default-rtdb.firebaseio.com',
-  ).ref();
+  DatabaseReference get _dbRef => FirebaseDatabase.instanceFor(
+        app: Firebase.app(),
+        databaseURL: 'https://pane-dcc9a-default-rtdb.firebaseio.com',
+      ).ref();
 
   @override
   void initState() {
@@ -203,7 +295,6 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // شنود زنده وضعیت کاربر در دیتابیس (حذف یا غیرفعال شدن توسط ادمین)
   void _listenToUserStatus() {
     _userStatusSubscription = _dbRef.child("users").child(widget.username).onValue.listen((event) async {
       if (!event.snapshot.exists) {
@@ -218,7 +309,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // قطع فوری اتصال و هدایت به صفحه لاگین
   Future<void> _forceLogout(String reason) async {
     if (isConnected) {
       await flutterV2ray.stopV2Ray();
@@ -241,7 +331,6 @@ class _HomeScreenState extends State<HomeScreen> {
           isConnected = status.state == "CONNECTED";
         });
 
-        // دریافت لایو و لحظه‌ای آمار ترافیک و ثبت مصرف در دیتابیس
         if (status.upload > _lastUpload || status.download > _lastDownload) {
           final int deltaUpload = status.upload - _lastUpload;
           final int deltaDownload = status.download - _lastDownload;
@@ -264,7 +353,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _fetchConfigsFromFirebase() async {
     try {
       final snapshot = await _dbRef.child("configs").get();
-      if (snapshot.exists) {
+      if (snapshot.exists && snapshot.value != null) {
         List<String> tempConfigs = [];
         if (snapshot.value is Map) {
           final data = Map<String, dynamic>.from(snapshot.value as Map);
@@ -355,7 +444,6 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Text('Xray Ultra (${widget.username})'),
         actions: [
-          // دکمه خروج (Logout)
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.redAccent),
             onPressed: () => _forceLogout("از حساب کاربری خارج شدید."),
