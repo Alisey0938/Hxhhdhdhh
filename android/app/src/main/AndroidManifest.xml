@@ -1,42 +1,32 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:permission="android.permission.INTERNET"/>
-    <uses-permission android:permission="android.permission.ACCESS_NETWORK_STATE"/>
-    <uses-permission android:permission="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:permission="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
-    <uses-permission android:permission="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.BIND_VPN_SERVICE"/>
 
     <application
-        android:label="XRAY ULTRA"
+        android:label="xray_ultra"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
         <activity
-            android:name=".MainActivity"
+            android:name="io.flutter.embedding.android.FlutterActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
+            
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:value="@style/NormalTheme"
+              />
+            
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-
-        <!-- سرویس نیتیو V2Ray/Xray جهت نمایش کلید VPN و جلوگیری از فورس کلوز -->
-        <service
-            android:name="com.v2ray.ang.service.V2RayVpnService"
-            android:enabled="true"
-            android:exported="false"
-            android:label="XRAY ULTRA VPN"
-            android:permission="android.permission.BIND_VPN_SERVICE">
-            <intent-filter>
-                <action android:name="android.net.VpnService"/>
-            </intent-filter>
-        </service>
 
         <meta-data
             android:name="flutterEmbedding"
