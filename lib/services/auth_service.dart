@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_v2ray_client/flutter_v2ray_client.dart';
+import 'package:flutter_v2ray/flutter_v2ray.dart';
 
 class AuthService {
   static final DatabaseReference _db = FirebaseDatabase.instance.ref();
   static StreamSubscription<DatabaseEvent>? _userSubscription;
 
-  /// شنود زنده وضعیت کاربر از فایربیس
+  /// شروع شنود لحظه‌ای وضعیت کاربر
   static void startUserListener(BuildContext context, String userId, FlutterV2ray v2rayClient) {
     _userSubscription?.cancel();
 
@@ -25,7 +25,7 @@ class AuthService {
     });
   }
 
-  /// توقف شنود
+  /// متوقف کردن شنود
   static void stopUserListener() {
     _userSubscription?.cancel();
     _userSubscription = null;
