@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -14,10 +15,10 @@ class XrayUltraApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const Color graniteBlack = Color(0xFF121417);
-    const Color graniteCard = Color(0xFF1E2228);
+    const Color bgDark = Color(0xFF14171F);
+    const Color cardBg = Color(0xFF1E222D);
+    const Color primaryPurple = Color(0xFF8A2BE2);
     const Color rubyGreen = Color(0xFF00A86B);
-    const Color deepPurple = Color(0xFF8A2BE2);
 
     return MaterialApp(
       title: 'Xray Ultra',
@@ -25,17 +26,17 @@ class XrayUltraApp extends StatelessWidget {
       themeMode: ThemeMode.dark,
       darkTheme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: graniteBlack,
-        primaryColor: deepPurple,
-        cardColor: graniteCard,
+        scaffoldBackgroundColor: bgDark,
+        primaryColor: primaryPurple,
+        cardColor: cardBg,
         colorScheme: const ColorScheme.dark(
-          primary: deepPurple,
+          primary: primaryPurple,
           secondary: rubyGreen,
-          surface: graniteCard,
-          background: graniteBlack,
+          surface: cardBg,
+          background: bgDark,
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: graniteBlack,
+          backgroundColor: bgDark,
           elevation: 0,
           centerTitle: true,
           titleTextStyle: TextStyle(
@@ -50,7 +51,7 @@ class XrayUltraApp extends StatelessWidget {
   }
 }
 
-// ==================== راه‌اندازی ایمن فایربیس ====================
+// ==================== راه‌اندازی فایربیس ====================
 class FirebaseInitScreen extends StatefulWidget {
   const FirebaseInitScreen({super.key});
 
@@ -109,7 +110,7 @@ class _FirebaseInitScreenState extends State<FirebaseInitScreen> {
               children: [
                 const Icon(Icons.error_outline, color: Colors.redAccent, size: 70),
                 const SizedBox(height: 16),
-                const Text('خطا در اتصال به Firebase',
+                const Text('خطا در اتصال به فایربیس',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 12),
                 Text(_errorMessage!,
@@ -136,7 +137,7 @@ class _FirebaseInitScreenState extends State<FirebaseInitScreen> {
   }
 }
 
-// ==================== صفحه لاگین ====================
+// ==================== صفحه لاگین (مطابق اسکرین‌شات) ====================
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -146,6 +147,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
 
   DatabaseReference get _dbRef => FirebaseDatabase.instanceFor(
@@ -155,8 +157,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login() async {
     final username = _usernameController.text.trim();
-    if (username.isEmpty) {
-      _showSnackBar("لطفاً نام کاربری را وارد کنید");
+    final password = _passwordController.text.trim();
+
+    if (username.isEmpty || password.isEmpty) {
+      _showSnackBar("لطفاً نام کاربری و رمز عبور را وارد کنید");
       return;
     }
 
@@ -166,16 +170,20 @@ class _LoginScreenState extends State<LoginScreen> {
       final snapshot = await _dbRef.child("users").child(username).get();
       if (snapshot.exists && snapshot.value != null) {
         final userData = Map<String, dynamic>.from(snapshot.value as Map);
+
+        final String dbPassword = userData['password']?.toString() ?? '';
         final bool isActive = userData['active'] ?? true;
 
-        if (!isActive) {
+        if (dbPassword != password) {
+          _showSnackBar("رمز عبور اشتباه است.");
+        } else if (!isActive) {
           _showSnackBar("حساب کاربری شما غیرفعال شده است.");
         } else {
           if (!mounted) return;
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (context) => HomeScreen(username: username),
+              builder: (context) => HomeScreen(username: username, userData: userData),
             ),
           );
         }
@@ -198,44 +206,113 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const Color deepPurple = Color(0xFF8A2BE2);
+    const Color purpleBorder = Color(0xFF8A2BE2);
     const Color rubyGreen = Color(0xFF00A86B);
 
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 28.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.shield_outlined, size: 80, color: rubyGreen),
-              const SizedBox(height: 20),
-              const Text("ورود به Xray Ultra",
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 30),
-              TextField(
-                controller: _usernameController,
-                decoration: InputDecoration(
-                  labelText: "نام کاربری",
-                  prefixIcon: const Icon(Icons.person, color: deepPurple),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              // لوگوی سپر در اسکرین‌شات
+              Container(
+                width: 90,
+                height: 90,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: rubyGreen, width: 3),
+                ),
+                child: const Icon(
+                  Icons.shield_outlined,
+                  size: 50,
+                  color: rubyGreen,
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
+              const Text(
+                "ورود به Xray Ultra",
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // فایلد نام کاربری
+              TextField(
+                controller: _usernameController,
+                textAlign: TextAlign.right,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: "نام کاربری",
+                  labelStyle: const TextStyle(color: purpleBorder),
+                  prefixIcon: const Icon(Icons.person, color: purpleBorder),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: purpleBorder, width: 1.5),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: rubyGreen, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFF1A1D26),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // فیلد رمز عبور
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                textAlign: TextAlign.right,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: "رمز عبور",
+                  labelStyle: const TextStyle(color: purpleBorder),
+                  prefixIcon: const Icon(Icons.lock, color: purpleBorder),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: purpleBorder, width: 1.5),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: rubyGreen, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFF1A1D26),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // دکمه ورود بنفش
               SizedBox(
                 width: double.infinity,
-                height: 50,
+                height: 52,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: deepPurple,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    backgroundColor: purpleBorder,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 5,
                   ),
                   onPressed: _isLoading ? null : _login,
                   child: _isLoading
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text("ورود", style: TextStyle(fontSize: 16, color: Colors.white)),
+                      : const Text(
+                          "ورود",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
                 ),
-              )
+              ),
             ],
           ),
         ),
@@ -244,10 +321,16 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ==================== صفحه اصلی برنامه ====================
+// ==================== صفحه اصلی (اصلی مطابق UI اسکرین‌شات دوم) ====================
 class HomeScreen extends StatefulWidget {
   final String username;
-  const HomeScreen({super.key, required this.username});
+  final Map<String, dynamic> userData;
+
+  const HomeScreen({
+    super.key,
+    required this.username,
+    required this.userData,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -257,13 +340,18 @@ class _HomeScreenState extends State<HomeScreen> {
   late FlutterV2ray flutterV2ray;
   bool isConnected = false;
   String v2rayStatus = "DISCONNECTED";
-  String pingResult = "0 ms";
-  List<String> configList = [];
+
+  List<Map<String, dynamic>> configItems = [];
   int selectedConfigIndex = 0;
+  Map<int, String> pingResults = {};
 
   int _lastUpload = 0;
   int _lastDownload = 0;
-  StreamSubscription<DatabaseEvent>? _userStatusSubscription;
+  StreamSubscription<DatabaseEvent>? _userSubscription;
+
+  double usedTrafficMB = 0.0;
+  double totalTrafficGB = 20.0;
+  int remainingDays = 30;
 
   DatabaseReference get _dbRef => FirebaseDatabase.instanceFor(
         app: Firebase.app(),
@@ -273,26 +361,37 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _updateUserDataLocal(widget.userData);
     _initV2RayEngine();
     _fetchConfigsFromFirebase();
-    _listenToUserStatus();
+    _listenToUserData();
   }
 
   @override
   void dispose() {
-    _userStatusSubscription?.cancel();
+    _userSubscription?.cancel();
     super.dispose();
   }
 
-  void _listenToUserStatus() {
-    _userStatusSubscription = _dbRef.child("users").child(widget.username).onValue.listen((event) async {
+  void _updateUserDataLocal(Map<String, dynamic> data) {
+    setState(() {
+      usedTrafficMB = (data['usedTrafficMB'] ?? 0.0).toDouble();
+      totalTrafficGB = (data['totalTrafficGB'] ?? 20.0).toDouble();
+      remainingDays = data['remainingDays'] ?? 30;
+    });
+  }
+
+  void _listenToUserData() {
+    _userSubscription = _dbRef.child("users").child(widget.username).onValue.listen((event) async {
       if (!event.snapshot.exists) {
-        _forceLogout("حساب کاربری شما توسط ادمین حذف گردید.");
+        _forceLogout("حساب کاربری شما حذف گردید.");
       } else {
         final userData = Map<String, dynamic>.from(event.snapshot.value as Map);
         final bool isActive = userData['active'] ?? true;
         if (!isActive) {
-          _forceLogout("حساب کاربری شما توسط ادمین غیرفعال گردید.");
+          _forceLogout("حساب کاربری شما توسط ادمین غیرفعال شد.");
+        } else {
+          _updateUserDataLocal(userData);
         }
       }
     });
@@ -343,27 +442,55 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final snapshot = await _dbRef.child("configs").get();
       if (snapshot.exists && snapshot.value != null) {
-        List<String> tempConfigs = [];
-        if (snapshot.value is Map) {
-          final data = Map<String, dynamic>.from(snapshot.value as Map);
-          data.forEach((key, value) {
-            if (value is String && value.trim().isNotEmpty) {
-              tempConfigs.add(value.trim());
-            } else if (value is Map && value.containsKey('url')) {
-              tempConfigs.add(value['url'].toString().trim());
+        List<Map<String, dynamic>> parsedList = [];
+
+        void processItem(dynamic raw) {
+          String url = "";
+          String name = "سرور اتصال";
+          String type = "VLESS";
+
+          if (raw is String) {
+            url = raw.trim();
+          } else if (raw is Map) {
+            url = raw['url']?.toString().trim() ?? "";
+            name = raw['name']?.toString() ?? "سرور اتصال";
+          }
+
+          if (url.isNotEmpty) {
+            if (url.startsWith("vless://")) type = "VLESS";
+            else if (url.startsWith("vmess://")) type = "VMESS";
+            else if (url.startsWith("trojan://")) type = "TROJAN";
+            else if (url.startsWith("ss://")) type = "SHADOWSOCKS";
+
+            // استخراج اسم از رمارک کانفیگ در صورت وجود
+            if (url.contains("#")) {
+              try {
+                name = Uri.decodeComponent(url.split("#").last);
+              } catch (_) {}
             }
-          });
-        } else if (snapshot.value is List) {
-          for (var item in snapshot.value as List) {
-            if (item != null) tempConfigs.add(item.toString().trim());
+
+            parsedList.add({
+              "url": url,
+              "name": name,
+              "type": type,
+            });
           }
         }
+
+        if (snapshot.value is Map) {
+          (snapshot.value as Map).forEach((k, v) => processItem(v));
+        } else if (snapshot.value is List) {
+          for (var item in snapshot.value as List) {
+            if (item != null) processItem(item);
+          }
+        }
+
         setState(() {
-          configList = tempConfigs;
+          configItems = parsedList;
         });
       }
     } catch (e) {
-      debugPrint("Error fetching configs: $e");
+      debugPrint("Error loading configs: $e");
     }
   }
 
@@ -375,20 +502,20 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    if (configList.isEmpty) {
-      _showSnackBar('هیچ کانفیگی یافت نشد!');
+    if (configItems.isEmpty) {
+      _showSnackBar('کانفیگی یافت نشد! در حال بروزرسانی...');
       _fetchConfigsFromFirebase();
       return;
     }
 
-    final String rawConfig = configList[selectedConfigIndex];
+    final String rawConfig = configItems[selectedConfigIndex]["url"];
 
     try {
       if (await flutterV2ray.requestPermission()) {
         final V2RayURL parseResult = FlutterV2ray.parseFromURL(rawConfig);
 
         await flutterV2ray.startV2Ray(
-          remark: parseResult.remark.isNotEmpty ? parseResult.remark : "Xray Ultra Server",
+          remark: parseResult.remark.isNotEmpty ? parseResult.remark : "Xray Ultra",
           config: rawConfig,
           blockedApps: null,
           bypassSubnets: null,
@@ -396,22 +523,26 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     } catch (e) {
-      debugPrint("V2Ray Launch Error: $e");
-      _showSnackBar('خطا در اجرای کانفیگ انتخاب‌شده');
+      _showSnackBar('خطا در برقراری اتصال سرور');
       await flutterV2ray.stopV2Ray();
     }
   }
 
-  Future<void> _getPing() async {
-    if (isConnected) {
+  Future<void> _testAllPings() async {
+    if (!isConnected) {
+      _showSnackBar('برای تست پینگ ابتدا اتصال را برقرار کنید.');
+      return;
+    }
+
+    for (int i = 0; i < configItems.length; i++) {
       try {
         final delay = await flutterV2ray.getConnectedServerDelay();
         setState(() {
-          pingResult = "$delay ms";
+          pingResults[i] = "${delay}ms";
         });
       } catch (_) {
         setState(() {
-          pingResult = "Error";
+          pingResults[i] = "خطا";
         });
       }
     }
@@ -427,143 +558,225 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     const Color rubyGreen = Color(0xFF00A86B);
-    const Color deepPurple = Color(0xFF8A2BE2);
+    const Color borderPurple = Color(0xFF5C6BC0);
+
+    final double usedGB = usedTrafficMB / 1024.0;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Xray Ultra (${widget.username})'),
+        title: const Text('Xray Ultra'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.redAccent),
-            onPressed: () => _forceLogout("از حساب کاربری خارج شدید."),
+            icon: const Icon(Icons.logout, color: Colors.white70),
+            onPressed: () => _forceLogout("خروج از حساب کاربری"),
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: rubyGreen),
-            onPressed: _fetchConfigsFromFirebase,
-          )
         ],
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
+      body: Stack(
+        children: [
+          Column(
             children: [
-              Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color: isConnected ? rubyGreen : deepPurple,
-                    width: 1.5,
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "وضعیت: $v2rayStatus",
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            "پینگ: $pingResult",
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: isConnected ? rubyGreen : Colors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.speed, color: rubyGreen),
-                        onPressed: _getPing,
-                      )
-                    ],
-                  ),
-                ),
-              ),
-
               const SizedBox(height: 10),
-
+              // لیست سرورها مطابق طراحی اسکرین‌شات
               Expanded(
-                child: configList.isEmpty
-                    ? const Center(child: CircularProgressIndicator(color: deepPurple))
+                child: configItems.isEmpty
+                    ? const Center(child: CircularProgressIndicator(color: rubyGreen))
                     : ListView.builder(
-                        itemCount: configList.length,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        itemCount: configItems.length,
                         itemBuilder: (context, index) {
+                          final item = configItems[index];
                           final bool isSelected = selectedConfigIndex == index;
-                          return Card(
-                            color: isSelected ? deepPurple.withOpacity(0.2) : null,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(
-                                color: isSelected ? rubyGreen : Colors.transparent,
-                                width: 1,
+                          final String ping = pingResults[index] ?? "---";
+
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                selectedConfigIndex = index;
+                              });
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1E222D),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isSelected ? borderPurple : Colors.transparent,
+                                  width: 1.5,
+                                ),
                               ),
-                            ),
-                            child: ListTile(
-                              title: Text(
-                                "سرور شماره ${index + 1}",
-                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              child: Row(
+                                children: [
+                                  // برچسب نوع پروتکل (مثلا VLESS)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.05),
+                                      borderRadius: const BorderRadius.only(
+                                        topLeft: Radius.circular(12),
+                                        bottomLeft: Radius.circular(12),
+                                      ),
+                                    ),
+                                    child: RotatedBox(
+                                      quarterTurns: 3,
+                                      child: Text(
+                                        item['type'],
+                                        style: const TextStyle(
+                                          color: Colors.grey,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+
+                                  // جزییات سرور
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          item['name'],
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          item['url'],
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.grey,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
+                                  // مقدار پینگ سبز
+                                  Container(
+                                    margin: const EdgeInsets.all(10),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: rubyGreen.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      ping,
+                                      style: const TextStyle(
+                                        color: rubyGreen,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                              subtitle: Text(
-                                configList[index],
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: Colors.grey, fontSize: 11),
-                              ),
-                              trailing: isSelected
-                                  ? const Icon(Icons.check_circle, color: rubyGreen)
-                                  : null,
-                              onTap: () {
-                                setState(() {
-                                  selectedConfigIndex = index;
-                                });
-                              },
                             ),
                           );
                         },
                       ),
               ),
 
-              const SizedBox(height: 10),
-
-              GestureDetector(
-                onTap: _toggleConnection,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  width: 110,
-                  height: 110,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Theme.of(context).cardColor,
-                    border: Border.all(
-                      color: isConnected ? rubyGreen : deepPurple,
-                      width: 4,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (isConnected ? rubyGreen : deepPurple).withOpacity(0.4),
-                        blurRadius: 15,
-                        spreadRadius: 2,
+              // نوار آبی متنی وضعیت اتصال
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                color: const Color(0xFF1B2333),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isConnected ? rubyGreen : Colors.redAccent,
                       ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.power_settings_new,
-                    size: 50,
-                    color: isConnected ? rubyGreen : deepPurple,
-                  ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        "$v2rayStatus, [long press->show ip,speed test]",
+                        style: const TextStyle(color: Colors.white70, fontSize: 11),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 10),
+
+              // نوار منوی سفارشی پایین صفحه (شامل حجم و دکمه‌ها)
+              Container(
+                height: 60,
+                color: const Color(0xFF14171F),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // دکمه دریافت کانفیگ
+                    InkWell(
+                      onTap: _fetchConfigsFromFirebase,
+                      child: const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.file_download_outlined, color: Colors.white70, size: 20),
+                          SizedBox(height: 2),
+                          Text("Get Config", style: TextStyle(color: Colors.white70, fontSize: 10)),
+                        ],
+                      ),
+                    ),
+
+                    // نمایش اطلاعات حجم و اعتبار
+                    Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          "حجم: ${usedGB.toStringAsFixed(2)} / ${totalTrafficGB.toStringAsFixed(1)} GB",
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          "اعتبار: $remainingDays روز باقی‌مانده",
+                          style: const TextStyle(color: Colors.grey, fontSize: 10),
+                        ),
+                      ],
+                    ),
+
+                    // دکمه تست پینگ
+                    InkWell(
+                      onTap: _testAllPings,
+                      child: const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.flash_on, color: Colors.white70, size: 20),
+                          SizedBox(height: 2),
+                          Text("Test", style: TextStyle(color: Colors.white70, fontSize: 10)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )
             ],
           ),
-        ),
+
+          // دکمه قدرتمند و شناور power (دقیقاً مشابه سمت راست اسکرین‌شات دوم)
+          Positioned(
+            right: 20,
+            bottom: 75,
+            child: FloatingActionButton(
+              backgroundColor: rubyGreen,
+              elevation: 8,
+              onPressed: _toggleConnection,
+              child: const Icon(Icons.power_settings_new, size: 32, color: Colors.white),
+            ),
+          ),
+        ],
       ),
     );
   }
