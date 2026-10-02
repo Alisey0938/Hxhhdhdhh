@@ -1,5 +1,5 @@
 name: xray_ultra
-description: "Xray Ultra Client App - Complete V2RayNG Engine"
+description: "A new Flutter V2Ray VPN application."
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -10,10 +10,13 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.8
-  firebase_core: ^3.6.0
-  firebase_database: ^11.1.4
-  flutter_v2ray: ^1.0.10
+
+  # پکیج‌های مورد نیاز main.dart
+  http: ^1.2.0
+  shared_preferences: ^2.2.2
+  flutter_v2ray_client:
+    git:
+      url: https://github.com/azad-academy/flutter_v2ray_client.git
 
 dev_dependencies:
   flutter_test:
