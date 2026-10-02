@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_v2ray_client/flutter_v2ray.dart';
+import 'package:flutter_v2ray/flutter_v2ray.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -220,7 +220,7 @@ class ServerListScreen extends StatefulWidget {
 class _ServerListScreenState extends State<ServerListScreen> {
   final String firebaseUrl = "https://pane-dcc9a-default-rtdb.firebaseio.com/";
 
-  late V2ray v2ray;
+  late FlutterV2ray flutterV2ray;
   List<dynamic> _configs = [];
   final Map<String, int> _pings = {};
   final Map<String, bool> _pingLoading = {};
@@ -247,7 +247,6 @@ class _ServerListScreenState extends State<ServerListScreen> {
     _fetchUserDataAndCheck();
     _fetchConfigs();
     
-    // بررسی زنده هر ۳ ثانیه جهت لاگ‌اوت آنی در صورت حذف یا غیرفعال شدن کاربر توسط ادمین
     _userCheckTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       _fetchUserDataAndCheck();
     });
@@ -260,7 +259,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
   }
 
   void _initV2Ray() async {
-    v2ray = V2ray(
+    flutterV2ray = FlutterV2ray(
       onStatusChanged: (status) {
         if (!mounted) return;
         final stateUpper = status.state.toUpperCase();
@@ -282,10 +281,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
       },
     );
 
-    await v2ray.initialize(
-      notificationIconResourceType: "mipmap",
-      notificationIconResourceName: "ic_launcher",
-    );
+    await flutterV2ray.initializeV2Ray();
   }
 
   Future<void> _fetchUserDataAndCheck() async {
@@ -294,13 +290,11 @@ class _ServerListScreenState extends State<ServerListScreen> {
       if (res.statusCode == 200 && res.body != 'null') {
         final data = json.decode(res.body);
         
-        // اگر ادمین کاربر را حذف کرده باشد
         if (data == null) {
           _logoutUser('حساب کاربری شما توسط ادمین حذف شده است.');
           return;
         }
 
-        // اگر ادمین کاربر را غیرفعال کرده باشد
         if (data['active'] != true) {
           _logoutUser('حساب کاربری شما غیرفعال شده است.');
           return;
@@ -387,7 +381,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
   void _logoutUser(String reason) async {
     _userCheckTimer?.cancel();
     try {
-      await v2ray.stopV2Ray();
+      await flutterV2ray.stopV2Ray();
     } catch (_) {}
 
     final prefs = await SharedPreferences.getInstance();
@@ -460,8 +454,8 @@ class _ServerListScreenState extends State<ServerListScreen> {
     }
 
     try {
-      V2RayURL parser = V2ray.parseFromURL(configUrl);
-      int delay = await v2ray.getServerDelay(
+      V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
+      int delay = await flutterV2ray.getServerDelay(
         config: parser.getFullConfiguration(),
         url: 'https://1.1.1.1',
       );
@@ -497,7 +491,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
     if (_isConnected) {
       setState(() => _isConnectingProcess = true);
       try {
-        await v2ray.stopV2Ray();
+        await flutterV2ray.stopV2Ray();
       } catch (_) {}
       setState(() {
         _isConnected = false;
@@ -518,14 +512,13 @@ class _ServerListScreenState extends State<ServerListScreen> {
     setState(() => _isConnectingProcess = true);
 
     try {
-      final bool hasPermission = await v2ray.requestPermission();
+      final bool hasPermission = await flutterV2ray.requestPermission();
       if (hasPermission) {
-        // پارس کردن لینک کامل جهت استخراج تمام پروتکل‌ها (VLESS, WebSocket, XHTTP, REALITY و ...)
-        V2RayURL parser = V2ray.parseFromURL(configUrl);
+        V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
 
-        await v2ray.startV2Ray(
+        await flutterV2ray.startV2Ray(
           remark: selectedConfig['name'] ?? parser.remark,
-          config: parser.getFullConfiguration(), // ارسال پیکربندی کامل استخراج‌شده
+          config: parser.getFullConfiguration(),
           proxyOnly: false,
         );
       } else {
