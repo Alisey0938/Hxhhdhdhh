@@ -1,127 +1,79 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_database/firebase_database.dart';
-import 'package:flutter_v2ray/flutter_v2ray.dart';
+import 'package:flutter_v2ray_client/flutter_v2ray.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
-import 'firebase_options.dart';
-
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const XrayUltraApp());
+  runApp(const MyApp());
 }
 
-class XrayUltraApp extends StatelessWidget {
-  const XrayUltraApp({super.key});
-
-  static const Color background = Color(0xFF191A26);
-  static const Color card = Color(0xFF232638);
-  static const Color accent = Color(0xFF8299E8);
-  static const Color green = Color(0xFF43A948);
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Xray Ultra',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: background,
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color(0xFF1B1D29),
         colorScheme: const ColorScheme.dark(
-          primary: accent,
-          secondary: green,
-          surface: card,
+          primary: Color(0xFF8B9BB4),
+          surface: Color(0xFF222536),
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: background,
-          foregroundColor: Colors.white,
+          backgroundColor: Color(0xFF1B1D29),
           elevation: 0,
-          centerTitle: true,
-        ),
-        snackBarTheme: const SnackBarThemeData(
-          behavior: SnackBarBehavior.floating,
         ),
       ),
-      home: const FirebaseInitScreen(),
+      home: const AuthCheckScreen(),
     );
   }
 }
 
-DatabaseReference get databaseRoot => FirebaseDatabase.instance.ref();
-
-class FirebaseInitScreen extends StatefulWidget {
-  const FirebaseInitScreen({super.key});
+class AuthCheckScreen extends StatefulWidget {
+  const AuthCheckScreen({super.key});
 
   @override
-  State<FirebaseInitScreen> createState() => _FirebaseInitScreenState();
+  State<AuthCheckScreen> createState() => _AuthCheckScreenState();
 }
 
-class _FirebaseInitScreenState extends State<FirebaseInitScreen> {
-  Object? _error;
-  bool _ready = false;
-
+class _AuthCheckScreenState extends State<AuthCheckScreen> {
   @override
   void initState() {
     super.initState();
-    _initialize();
+    _checkLogin();
   }
 
-  Future<void> _initialize() async {
-    try {
-      if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
+  void _checkLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? userId = prefs.getString('user_id');
+
+    if (userId != null && userId.isNotEmpty) {
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => ServerListScreen(userId: userId)),
         );
       }
-      if (mounted) setState(() => _ready = true);
-    } catch (e) {
-      if (mounted) setState(() => _error = e);
+    } else {
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_ready) return const LoginScreen();
-
-    if (_error != null) {
-      return Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.cloud_off, color: Colors.redAccent, size: 54),
-                const SizedBox(height: 14),
-                const Text(
-                  'اتصال به Firebase برقرار نشد',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'تنظیمات Firebase را بررسی کنید.\n$_error',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white60, fontSize: 12),
-                ),
-                const SizedBox(height: 18),
-                FilledButton(
-                  onPressed: () => setState(() {
-                    _error = null;
-                    _ready = false;
-                    _initialize();
-                  }),
-                  child: const Text('تلاش مجدد'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
     return const Scaffold(
-      body: Center(child: CircularProgressIndicator()),
+      body: Center(child: CircularProgressIndicator(color: Color(0xFF8B9BB4))),
     );
   }
 }
@@ -134,894 +86,119 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _username = TextEditingController();
-  final _password = TextEditingController();
-  bool _loading = false;
-  bool _hidePassword = true;
-
-  @override
-  void dispose() {
-    _username.dispose();
-    _password.dispose();
-    super.dispose();
-  }
-
-  bool _asBool(dynamic value, {bool fallback = true}) {
-    if (value is bool) return value;
-    if (value is num) return value != 0;
-    if (value is String) {
-      if (value.toLowerCase() == 'false' || value == '0') return false;
-      if (value.toLowerCase() == 'true' || value == '1') return true;
-    }
-    return fallback;
-  }
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
 
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
-    FocusScope.of(context).unfocus();
-    setState(() => _loading = true);
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text.trim();
 
-    final username = _username.text.trim();
-    final password = _password.text;
+    if (username.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لطفاً نام کاربری و رمز عبور را وارد کنید.')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
 
     try {
-      final snapshot = await databaseRoot.child('users').child(username).get();
-      if (!snapshot.exists || snapshot.value is! Map) {
-        _message('نام کاربری یا رمز عبور صحیح نیست.');
-        return;
-      }
+      final res = await http.get(Uri.parse("https://pane-dcc9a-default-rtdb.firebaseio.com/users.json"));
+      if (res.statusCode == 200 && res.body != 'null') {
+        final Map<String, dynamic> users = json.decode(res.body);
+        String? foundUserId;
+        Map<String, dynamic>? userData;
 
-      final data = Map<String, dynamic>.from(snapshot.value as Map);
-      if ((data['password']?.toString() ?? '') != password) {
-        _message('نام کاربری یا رمز عبور صحیح نیست.');
-        return;
-      }
-      if (!_asBool(data['active'])) {
-        _message('حساب کاربری شما غیرفعال است.');
-        return;
-      }
-
-      final expiry = accountExpiry(data);
-      if (expiry != null && !expiry.isAfter(DateTime.now())) {
-        _message('اعتبار حساب کاربری شما به پایان رسیده است.');
-        return;
-      }
-
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => HomeScreen(username: username, initialUserData: data),
-        ),
-      );
-    } catch (e) {
-      _message('خطا در دریافت اطلاعات حساب. اتصال اینترنت و دسترسی Firebase را بررسی کنید.');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  void _message(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: const Color(0xFFB33A45)),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    const purple = Color(0xFF8299E8);
-    const green = Color(0xFF43A948);
-
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 430),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      height: 88,
-                      width: 88,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: green, width: 2.5),
-                      ),
-                      child: const Icon(Icons.shield_outlined, size: 48, color: green),
-                    ),
-                    const SizedBox(height: 22),
-                    const Text(
-                      'ورود به Xray Ultra',
-                      style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'برای ادامه، وارد حساب کاربری خود شوید',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white54),
-                    ),
-                    const SizedBox(height: 32),
-                    TextFormField(
-                      controller: _username,
-                      textDirection: TextDirection.ltr,
-                      textInputAction: TextInputAction.next,
-                      autocorrect: false,
-                      decoration: _inputDecoration(
-                        'نام کاربری',
-                        Icons.person_outline,
-                        purple,
-                      ),
-                      validator: (v) =>
-                          v == null || v.trim().isEmpty ? 'نام کاربری را وارد کنید' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _password,
-                      textDirection: TextDirection.ltr,
-                      obscureText: _hidePassword,
-                      onFieldSubmitted: (_) => _login(),
-                      decoration: _inputDecoration(
-                        'رمز عبور',
-                        Icons.lock_outline,
-                        purple,
-                      ).copyWith(
-                        suffixIcon: IconButton(
-                          onPressed: () => setState(() => _hidePassword = !_hidePassword),
-                          icon: Icon(
-                            _hidePassword ? Icons.visibility_off : Icons.visibility,
-                            color: Colors.white54,
-                          ),
-                        ),
-                      ),
-                      validator: (v) =>
-                          v == null || v.isEmpty ? 'رمز عبور را وارد کنید' : null,
-                    ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: FilledButton(
-                        onPressed: _loading ? null : _login,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: purple,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: _loading
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text(
-                                'ورود',
-                                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  InputDecoration _inputDecoration(String label, IconData icon, Color accent) {
-    return InputDecoration(
-      labelText: label,
-      prefixIcon: Icon(icon, color: accent),
-      filled: true,
-      fillColor: const Color(0xFF1E202D),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: Color(0xFF45495C)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: accent, width: 1.7),
-      ),
-    );
-  }
-}
-
-/// Reads supported expiry fields. Numeric timestamps may be seconds or milliseconds.
-/// If no expiry timestamp exists, remainingDays is used as a display fallback only.
-DateTime? accountExpiry(Map<String, dynamic> data) {
-  final value = data['expiresAt'] ?? data['expireAt'] ?? data['expiryTimestamp'];
-  if (value is num) {
-    final raw = value.toInt();
-    return DateTime.fromMillisecondsSinceEpoch(raw < 1000000000000 ? raw * 1000 : raw);
-  }
-  if (value is String && value.trim().isNotEmpty) {
-    final numeric = num.tryParse(value.trim());
-    if (numeric != null) {
-      final raw = numeric.toInt();
-      return DateTime.fromMillisecondsSinceEpoch(
-        raw < 1000000000000 ? raw * 1000 : raw,
-      );
-    }
-    return DateTime.tryParse(value.trim());
-  }
-  return null;
-}
-
-class HomeScreen extends StatefulWidget {
-  final String username;
-  final Map<String, dynamic> initialUserData;
-
-  const HomeScreen({
-    super.key,
-    required this.username,
-    required this.initialUserData,
-  });
-
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  static const Color _background = Color(0xFF191A26);
-  static const Color _card = Color(0xFF232638);
-  static const Color _accent = Color(0xFF8299E8);
-  static const Color _green = Color(0xFF43A948);
-
-  late final FlutterV2ray _v2ray;
-  StreamSubscription<DatabaseEvent>? _userSubscription;
-
-  bool _engineReady = false;
-  bool _connected = false;
-  bool _connecting = false;
-  bool _loggingOut = false;
-  String _status = 'DISCONNECTED';
-  String? _engineError;
-
-  List<Map<String, String>> _configs = [];
-  int _selectedIndex = 0;
-  final Map<int, String> _ping = {};
-
-  int _lastUpload = 0;
-  int _lastDownload = 0;
-  double _usedTrafficMB = 0;
-  double _totalTrafficGB = 20;
-  int _fallbackRemainingDays = 30;
-  DateTime? _expiry;
-  bool _accountActive = true;
-
-  DatabaseReference get _userRef =>
-      databaseRoot.child('users').child(widget.username);
-
-  @override
-  void initState() {
-    super.initState();
-    _applyUserData(widget.initialUserData, notify: false);
-    _initializeEngine();
-    _loadConfigs();
-    _watchUser();
-  }
-
-  @override
-  void dispose() {
-    _userSubscription?.cancel();
-    super.dispose();
-  }
-
-  void _applyUserData(
-    Map<String, dynamic> data, {
-    bool notify = true,
-  }) {
-    double number(dynamic value, double fallback) {
-      if (value is num) return value.toDouble();
-      return double.tryParse(value?.toString() ?? '') ?? fallback;
-    }
-
-    final used = number(data['usedTrafficMB'], 0).clamp(0, double.infinity).toDouble();
-    final total = number(data['totalTrafficGB'], 20).clamp(0, double.infinity).toDouble();
-    final days = int.tryParse('${data['remainingDays'] ?? 30}') ?? 30;
-    final expiry = accountExpiry(data);
-    final active = data['active'] == null
-        ? true
-        : (data['active'] == true ||
-            data['active'] == 1 ||
-            data['active'].toString().toLowerCase() == 'true');
-
-    void assign() {
-      _usedTrafficMB = used;
-      _totalTrafficGB = total;
-      _fallbackRemainingDays = days;
-      _expiry = expiry;
-      _accountActive = active;
-    }
-
-    if (notify && mounted) {
-      setState(assign);
-    } else {
-      assign();
-    }
-  }
-
-  int get _remainingDays {
-    if (_expiry != null) {
-      final difference = _expiry!.difference(DateTime.now()).inSeconds;
-      if (difference <= 0) return 0;
-      return (difference / Duration.secondsPerDay).ceil();
-    }
-    return _fallbackRemainingDays < 0 ? 0 : _fallbackRemainingDays;
-  }
-
-  double get _totalMB => _totalTrafficGB * 1024;
-  bool get _quotaExhausted => _totalTrafficGB <= 0 || _usedTrafficMB >= _totalMB;
-  bool get _subscriptionExpired => _remainingDays <= 0;
-
-  Future<void> _initializeEngine() async {
-    _v2ray = FlutterV2ray(
-      onStatusChanged: (status) {
-        if (!mounted) return;
-
-        final int upload = status.upload;
-        final int download = status.download;
-        double deltaMB = 0;
-
-        // Counters may reset when the tunnel restarts. Never write negative deltas.
-        if (upload >= _lastUpload) deltaMB += (upload - _lastUpload) / (1024 * 1024);
-        if (download >= _lastDownload) deltaMB += (download - _lastDownload) / (1024 * 1024);
-        _lastUpload = upload;
-        _lastDownload = download;
-
-        setState(() {
-          _status = status.state;
-          _connected = status.state == 'CONNECTED';
+        users.forEach((key, value) {
+          if (value != null && value['username'] == username && value['password'] == password) {
+            foundUserId = key;
+            userData = Map<String, dynamic>.from(value);
+          }
         });
 
-        if (deltaMB > 0) {
-          _userRef.update({
-            'usedTrafficMB': ServerValue.increment(deltaMB),
-            'lastOnline': ServerValue.timestamp,
-          }).catchError((_) {});
-        }
-      },
-    );
+        if (foundUserId != null && userData != null) {
+          if (userData!['active'] != true) {
+            _showError('حساب کاربری شما غیرفعال شده است.');
+            setState(() => _isLoading = false);
+            return;
+          }
 
-    try {
-      await _v2ray.initializeV2Ray();
-      if (mounted) setState(() => _engineReady = true);
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('user_id', foundUserId!);
+
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => ServerListScreen(userId: foundUserId!)),
+            );
+          }
+        } else {
+          _showError('نام کاربری یا رمز عبور اشتباه است.');
+        }
+      } else {
+        _showError('خطا در ارتباط با سرور.');
+      }
     } catch (e) {
-      if (mounted) setState(() => _engineError = e.toString());
-    }
-  }
-
-  void _watchUser() {
-    _userSubscription = _userRef.onValue.listen(
-      (event) {
-        if (!event.snapshot.exists || event.snapshot.value is! Map) {
-          _forceLogout('حساب کاربری حذف شده است.');
-          return;
-        }
-        final data = Map<String, dynamic>.from(event.snapshot.value as Map);
-        _applyUserData(data);
-        final active = data['active'] == null ||
-            data['active'] == true ||
-            data['active'] == 1 ||
-            data['active'].toString().toLowerCase() == 'true';
-        final expiry = accountExpiry(data);
-        final expired = expiry != null && !expiry.isAfter(DateTime.now());
-        final used = double.tryParse('${data['usedTrafficMB'] ?? 0}') ?? 0;
-        final total = double.tryParse('${data['totalTrafficGB'] ?? 20}') ?? 20;
-        if (!active) {
-          _forceLogout('حساب کاربری شما توسط ادمین غیرفعال شده است.');
-        } else if (expired) {
-          _stopForLimit('اعتبار اشتراک شما به پایان رسیده است.');
-        } else if (total <= 0 || used >= total * 1024) {
-          _stopForLimit('حجم مجاز حساب شما به پایان رسیده است.');
-        }
-      },
-      onError: (_) => _message('خطا در دریافت تغییرات حساب کاربری.'),
-    );
-  }
-
-  Future<void> _stopForLimit(String reason) async {
-    if (_connected || _connecting) {
-      try {
-        await _v2ray.stopV2Ray();
-      } catch (_) {}
-    }
-    if (mounted) _message(reason);
-  }
-
-  Future<void> _forceLogout(String reason) async {
-    if (_loggingOut) return;
-    _loggingOut = true;
-    try {
-      if (_connected || _connecting) await _v2ray.stopV2Ray();
-    } catch (_) {}
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(reason), backgroundColor: const Color(0xFFB33A45)),
-    );
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (_) => false,
-    );
-  }
-
-  String _detectType(String url) {
-    final lower = url.trim().toLowerCase();
-    if (lower.startsWith('vless://')) return 'VLESS';
-    if (lower.startsWith('vmess://')) return 'VMESS';
-    if (lower.startsWith('trojan://')) return 'TROJAN';
-    if (lower.startsWith('ss://')) return 'SHADOWSOCKS';
-    if (lower.startsWith('socks://') || lower.startsWith('socks5://')) return 'SOCKS';
-    if (lower.startsWith('hysteria2://') || lower.startsWith('hy2://')) return 'HYSTERIA2';
-    if (lower.startsWith('tuic://')) return 'TUIC';
-    if (lower.startsWith('wireguard://')) return 'WIREGUARD';
-    if (lower.startsWith('https://') || lower.startsWith('http://')) return 'SUBSCRIPTION';
-    return 'UNKNOWN';
-  }
-
-  Future<void> _loadConfigs() async {
-    try {
-      final snapshot = await databaseRoot.child('configs').get();
-      if (!snapshot.exists || snapshot.value == null) {
-        if (mounted) setState(() => _configs = []);
-        return;
-      }
-
-      final parsed = <Map<String, String>>[];
-
-      void add(dynamic raw) {
-        String url = '';
-        String name = 'سرور اتصال';
-        if (raw is String) {
-          url = raw.trim();
-        } else if (raw is Map) {
-          url = (raw['url'] ?? raw['link'] ?? raw['config'] ?? '').toString().trim();
-          name = (raw['name'] ?? raw['remark'] ?? name).toString().trim();
-        }
-        if (url.isEmpty) return;
-
-        final hashIndex = url.indexOf('#');
-        if (hashIndex >= 0 && hashIndex < url.length - 1) {
-          try {
-            final remark = Uri.decodeComponent(url.substring(hashIndex + 1));
-            if (remark.isNotEmpty) name = remark;
-          } catch (_) {}
-        }
-        parsed.add({
-          'url': url,
-          'name': name.isEmpty ? 'سرور اتصال' : name,
-          'type': _detectType(url),
-        });
-      }
-
-      final value = snapshot.value;
-      if (value is Map) {
-        for (final item in value.values) {
-          add(item);
-        }
-      } else if (value is List) {
-        for (final item in value) {
-          if (item != null) add(item);
-        }
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _configs = parsed;
-        if (_selectedIndex >= _configs.length) _selectedIndex = 0;
-      });
-    } catch (_) {
-      _message('دریافت کانفیگ‌ها ناموفق بود. دسترسی Firebase را بررسی کنید.');
-    }
-  }
-
-  Future<void> _toggleConnection() async {
-    if (_connecting) return;
-
-    if (_connected) {
-      try {
-        await _v2ray.stopV2Ray();
-      } catch (_) {
-        _message('قطع اتصال با خطا مواجه شد.');
-      } finally {
-        _lastUpload = 0;
-        _lastDownload = 0;
-      }
-      return;
-    }
-
-    if (!_engineReady) {
-      _message(_engineError == null
-          ? 'موتور اتصال هنوز آماده نیست.'
-          : 'موتور اتصال راه‌اندازی نشد: $_engineError');
-      return;
-    }
-    if (!_accountActive) {
-      _message('حساب کاربری غیرفعال است.');
-      return;
-    }
-    if (_subscriptionExpired) {
-      _message('اعتبار اشتراک شما به پایان رسیده است.');
-      return;
-    }
-    if (_quotaExhausted) {
-      _message('حجم مجاز حساب شما به پایان رسیده است.');
-      return;
-    }
-    if (_configs.isEmpty) {
-      _message('کانفیگی یافت نشد؛ فهرست را تازه‌سازی کنید.');
-      await _loadConfigs();
-      return;
-    }
-
-    final selected = _configs[_selectedIndex];
-    final rawConfig = selected['url']!;
-    final type = selected['type']!;
-
-    if (type == 'SUBSCRIPTION') {
-      _message('این آدرس اشتراک است، نه لینک کانفیگ تکی. ابتدا اشتراک را به کانفیگ‌ها تبدیل کنید.');
-      return;
-    }
-    if (type == 'UNKNOWN') {
-      _message('فرمت این کانفیگ شناسایی نشد.');
-      return;
-    }
-
-    setState(() => _connecting = true);
-    try {
-      final permissionGranted = await _v2ray.requestPermission();
-      if (!permissionGranted) {
-        _message('برای اتصال VPN باید مجوز سیستم را تأیید کنید.');
-        return;
-      }
-
-      final parsed = FlutterV2ray.parseFromURL(rawConfig);
-      await _v2ray.startV2Ray(
-        remark: parsed.remark.isNotEmpty ? parsed.remark : selected['name']!,
-        config: rawConfig,
-        blockedApps: null,
-        bypassSubnets: null,
-        proxyOnly: false,
-      );
-    } catch (e) {
-      _message('اتصال برقرار نشد. ممکن است این نوع کانفیگ توسط موتور فعلی پشتیبانی نشود.');
-      try {
-        await _v2ray.stopV2Ray();
-      } catch (_) {}
+      _showError('خطا در برقراری ارتباط: $e');
     } finally {
-      if (mounted) setState(() => _connecting = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _testSelectedPing() async {
-    if (!_connected) {
-      _message('برای تست تأخیر، ابتدا اتصال را برقرار کنید.');
-      return;
-    }
-    try {
-      final delay = await _v2ray.getConnectedServerDelay();
-      if (!mounted) return;
-      setState(() => _ping[_selectedIndex] = '${delay} ms');
-    } catch (_) {
-      if (mounted) setState(() => _ping[_selectedIndex] = 'خطا');
-    }
-  }
-
-  void _message(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: const Color(0xFFB33A45)),
-    );
-  }
-
-  String _shortUrl(String value) {
-    if (value.length <= 66) return value;
-    return '${value.substring(0, 62)}…';
+  void _showError(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.redAccent));
   }
 
   @override
   Widget build(BuildContext context) {
-    final usedGB = _usedTrafficMB / 1024;
-    final connectedColor = _connected ? const Color(0xFF62E6B3) : Colors.white54;
-    final statusText = _connecting ? 'CONNECTING' : _status;
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Xray Ultra', style: TextStyle(fontWeight: FontWeight.w500)),
-        automaticallyImplyLeading: false,
-        actions: [
-          IconButton(
-            tooltip: 'خروج',
-            onPressed: () => _forceLogout('از حساب کاربری خارج شدید.'),
-            icon: const Icon(Icons.logout, color: Colors.white60),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            const SizedBox(height: 14),
-            Expanded(
-              child: _configs.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.dns_outlined, size: 44, color: Colors.white38),
-                          const SizedBox(height: 12),
-                          const Text('کانفیگی برای نمایش وجود ندارد',
-                              style: TextStyle(color: Colors.white60)),
-                          const SizedBox(height: 12),
-                          OutlinedButton.icon(
-                            onPressed: _loadConfigs,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('تلاش مجدد'),
-                          ),
-                        ],
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _loadConfigs,
-                      child: ListView.builder(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
-                        itemCount: _configs.length,
-                        itemBuilder: (context, index) {
-                          final item = _configs[index];
-                          final selected = index == _selectedIndex;
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 16),
-                            child: _ServerCard(
-                              name: item['name']!,
-                              url: _shortUrl(item['url']!),
-                              type: item['type']!,
-                              ping: _ping[index] ?? '---',
-                              selected: selected,
-                              onTap: () {
-                                if (_connected) {
-                                  _message('برای تغییر سرور ابتدا اتصال را قطع کنید.');
-                                  return;
-                                }
-                                setState(() => _selectedIndex = index);
-                              },
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-            ),
-            Container(
-              width: double.infinity,
-              height: 48,
-              padding: const EdgeInsets.symmetric(horizontal: 30),
-              color: const Color(0xFF26304A),
-              child: Row(
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: connectedColor,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: GestureDetector(
-                      onLongPress: _testSelectedPing,
-                      child: Text(
-                        _engineError == null
-                            ? '$statusText, [برای تست تأخیر لمس طولانی کنید]'
-                            : 'ENGINE ERROR',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              height: 78,
-              color: const Color(0xFF151620),
-              padding: const EdgeInsets.symmetric(horizontal: 22),
-              child: Row(
-                children: [
-                  _BottomAction(
-                    icon: Icons.download_for_offline_outlined,
-                    label: 'Get Config',
-                    onTap: _loadConfigs,
-                  ),
-                  const Spacer(),
-                  Expanded(
-                    flex: 3,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'حجم: ${usedGB.toStringAsFixed(2)} / ${_totalTrafficGB.toStringAsFixed(1)} GB',
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          'اعتبار: $_remainingDays روز باقی‌مانده',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white60, fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Spacer(),
-                  _BottomAction(
-                    icon: Icons.bolt,
-                    label: 'Test',
-                    onTap: _testSelectedPing,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(right: 8, bottom: 8),
-        child: SizedBox(
-          width: 76,
-          height: 76,
-          child: FloatingActionButton(
-            heroTag: 'vpnPowerButton',
-            backgroundColor: _connected ? const Color(0xFFB33A45) : _green,
-            elevation: 5,
-            onPressed: _toggleConnection,
-            child: _connecting
-                ? const SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.power_settings_new, size: 34, color: Colors.white),
-          ),
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-    );
-  }
-}
-
-class _ServerCard extends StatelessWidget {
-  final String name;
-  final String url;
-  final String type;
-  final String ping;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ServerCard({
-    required this.name,
-    required this.url,
-    required this.type,
-    required this.ping,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const green = Color(0xFF43A948);
-    return Material(
-      color: const Color(0xFF232638),
-      borderRadius: BorderRadius.circular(24),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 124),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: selected ? const Color(0xFF8299E8) : Colors.transparent,
-              width: 2,
-            ),
-          ),
-          child: Row(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                width: 48,
-                constraints: const BoxConstraints(minHeight: 120),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF1D2030),
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(22),
-                    bottomLeft: Radius.circular(22),
-                  ),
-                ),
-                alignment: Alignment.center,
-                child: RotatedBox(
-                  quarterTurns: 3,
-                  child: Text(
-                    type,
-                    maxLines: 1,
-                    style: const TextStyle(
-                      color: Colors.white54,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+              const Icon(Icons.vpn_key_rounded, size: 80, color: Color(0xFF8B9BB4)),
+              const SizedBox(height: 12),
+              const Text(
+                'XRAY ULTRA',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+              ),
+              const SizedBox(height: 32),
+              TextField(
+                controller: _usernameController,
+                decoration: InputDecoration(
+                  labelText: 'نام کاربری',
+                  filled: true,
+                  fillColor: const Color(0xFF222536),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        url,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white38, fontSize: 11),
-                      ),
-                    ],
-                  ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'رمز عبور',
+                  filled: true,
+                  fillColor: const Color(0xFF222536),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 12, 12, 12),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    const Icon(Icons.open_in_new, color: Colors.white54, size: 22),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: green.withOpacity(0.32),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        ping,
-                        style: const TextStyle(
-                          color: Color(0xFF8BD49A),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF3B4261),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _isLoading ? null : _login,
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text('ورود', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
@@ -1032,30 +209,548 @@ class _ServerCard extends StatelessWidget {
   }
 }
 
-class _BottomAction extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
+class ServerListScreen extends StatefulWidget {
+  final String userId;
+  const ServerListScreen({super.key, required this.userId});
 
-  const _BottomAction({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
+  @override
+  State<ServerListScreen> createState() => _ServerListScreenState();
+}
+
+class _ServerListScreenState extends State<ServerListScreen> {
+  final String firebaseUrl = "https://pane-dcc9a-default-rtdb.firebaseio.com/";
+
+  late V2ray v2ray;
+  List<dynamic> _configs = [];
+  final Map<String, int> _pings = {};
+  final Map<String, bool> _pingLoading = {};
+
+  bool _isLoading = true;
+  bool _isTestingAllPings = false;
+  bool _isConnectingProcess = false;
+  String? _selectedConfigId;
+  bool _isConnected = false;
+
+  Map<String, dynamic>? _userData;
+  
+  int _lastSessionUpload = 0;
+  int _lastSessionDownload = 0;
+  int _accumulatedUsedBytes = 0;
+  int _remainingDays = 0;
+
+  Timer? _userCheckTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _initV2Ray();
+    _fetchUserDataAndCheck();
+    _fetchConfigs();
+    
+    // بررسی زنده هر ۳ ثانیه جهت لاگ‌اوت آنی در صورت حذف یا غیرفعال شدن کاربر توسط ادمین
+    _userCheckTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      _fetchUserDataAndCheck();
+    });
+  }
+
+  @override
+  void dispose() {
+    _userCheckTimer?.cancel();
+    super.dispose();
+  }
+
+  void _initV2Ray() async {
+    v2ray = V2ray(
+      onStatusChanged: (status) {
+        if (!mounted) return;
+        final stateUpper = status.state.toUpperCase();
+
+        if (stateUpper == 'CONNECTED') {
+          setState(() {
+            _isConnected = true;
+            _isConnectingProcess = false;
+          });
+          _calculateAndSaveTraffic(status.upload, status.download);
+        } else if (stateUpper == 'DISCONNECTED' || stateUpper == 'STOPPED' || stateUpper == 'IDLE') {
+          setState(() {
+            _isConnected = false;
+            _isConnectingProcess = false;
+            _lastSessionUpload = 0;
+            _lastSessionDownload = 0;
+          });
+        }
+      },
+    );
+
+    await v2ray.initialize(
+      notificationIconResourceType: "mipmap",
+      notificationIconResourceName: "ic_launcher",
+    );
+  }
+
+  Future<void> _fetchUserDataAndCheck() async {
+    try {
+      final res = await http.get(Uri.parse("${firebaseUrl}users/${widget.userId}.json"));
+      if (res.statusCode == 200 && res.body != 'null') {
+        final data = json.decode(res.body);
+        
+        // اگر ادمین کاربر را حذف کرده باشد
+        if (data == null) {
+          _logoutUser('حساب کاربری شما توسط ادمین حذف شده است.');
+          return;
+        }
+
+        // اگر ادمین کاربر را غیرفعال کرده باشد
+        if (data['active'] != true) {
+          _logoutUser('حساب کاربری شما غیرفعال شده است.');
+          return;
+        }
+
+        _userData = Map<String, dynamic>.from(data);
+        _accumulatedUsedBytes = (data['used_bytes'] ?? 0);
+
+        if (data['created_at'] != null && data['max_days'] != null && data['max_days'] > 0) {
+          final createdDate = DateTime.parse(data['created_at']);
+          final maxDays = (data['max_days'] as num).toInt();
+          final expireDate = createdDate.add(Duration(days: maxDays));
+          final difference = expireDate.difference(DateTime.now()).inDays;
+
+          if (difference <= 0) {
+            _remainingDays = 0;
+            _logoutUser('اعتبار زمانی حساب شما به پایان رسیده است.');
+            return;
+          } else {
+            _remainingDays = difference;
+          }
+        } else {
+          _remainingDays = 999;
+        }
+
+        double maxGb = (data['max_volume_gb'] ?? 0).toDouble();
+        if (maxGb > 0) {
+          double usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
+          if (usedGb >= maxGb) {
+            _logoutUser('حجم مصرفی حساب شما به پایان رسیده است.');
+            return;
+          }
+        }
+
+        if (mounted) setState(() {});
+      } else if (res.body == 'null') {
+        _logoutUser('حساب کاربری شما یافت نشد.');
+      }
+    } catch (e) {
+      debugPrint("خطا در به‌روزرسانی داده کاربر: $e");
+    }
+  }
+
+  void _calculateAndSaveTraffic(int currentUpload, int currentDownload) async {
+    if (!_isConnected || _userData == null) return;
+
+    int uploadDelta = 0;
+    int downloadDelta = 0;
+
+    if (_lastSessionUpload > 0 && currentUpload >= _lastSessionUpload) {
+      uploadDelta = currentUpload - _lastSessionUpload;
+    }
+    if (_lastSessionDownload > 0 && currentDownload >= _lastSessionDownload) {
+      downloadDelta = currentDownload - _lastSessionDownload;
+    }
+
+    _lastSessionUpload = currentUpload;
+    _lastSessionDownload = currentDownload;
+
+    int totalDelta = uploadDelta + downloadDelta;
+
+    if (totalDelta > 0) {
+      _accumulatedUsedBytes += totalDelta;
+      _userData!['used_bytes'] = _accumulatedUsedBytes;
+
+      if (mounted) setState(() {});
+
+      try {
+        await http.patch(
+          Uri.parse("${firebaseUrl}users/${widget.userId}.json"),
+          body: json.encode({"used_bytes": _accumulatedUsedBytes}),
+        );
+      } catch (e) {
+        debugPrint("خطا در ثبت حجم: $e");
+      }
+
+      double maxGb = (_userData!['max_volume_gb'] ?? 0).toDouble();
+      if (maxGb > 0 && (_accumulatedUsedBytes / (1024 * 1024 * 1024)) >= maxGb) {
+        _logoutUser('حجم مجاز شما به پایان رسید.');
+      }
+    }
+  }
+
+  void _logoutUser(String reason) async {
+    _userCheckTimer?.cancel();
+    try {
+      await v2ray.stopV2Ray();
+    } catch (_) {}
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('user_id');
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(reason), backgroundColor: Colors.redAccent),
+      );
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+    }
+  }
+
+  Future<void> _fetchConfigs() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await http.get(Uri.parse("${firebaseUrl}configs.json"));
+      if (response.statusCode == 200 && response.body != 'null') {
+        final data = json.decode(response.body);
+        List<dynamic> loadedConfigs = [];
+
+        if (data is List) {
+          loadedConfigs = data.where((item) => item != null && item['active'] == true).toList();
+        } else if (data is Map) {
+          data.forEach((key, value) {
+            if (value != null && value['active'] == true) {
+              loadedConfigs.add(value);
+            }
+          });
+        }
+
+        setState(() {
+          _configs = loadedConfigs;
+          if (_configs.isNotEmpty && _selectedConfigId == null) {
+            _selectedConfigId = _configs[0]['id']?.toString() ?? _configs[0]['name'];
+          }
+          _isLoading = false;
+        });
+
+        _testAllPings();
+      } else {
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _testAllPings() async {
+    if (_isTestingAllPings) return;
+    setState(() => _isTestingAllPings = true);
+
+    for (var item in _configs) {
+      await _testSinglePing(item);
+    }
+
+    if (mounted) {
+      setState(() => _isTestingAllPings = false);
+    }
+  }
+
+  Future<void> _testSinglePing(Map<String, dynamic> item) async {
+    final String configUrl = (item['config'] ?? '').toString().trim();
+    final String configId = item['id']?.toString() ?? item['name'];
+
+    if (configUrl.isEmpty) return;
+
+    if (mounted) {
+      setState(() => _pingLoading[configId] = true);
+    }
+
+    try {
+      V2RayURL parser = V2ray.parseFromURL(configUrl);
+      int delay = await v2ray.getServerDelay(
+        config: parser.getFullConfiguration(),
+        url: 'https://1.1.1.1',
+      );
+
+      if (delay <= 0) {
+        final stopwatch = Stopwatch()..start();
+        final int targetPort = int.tryParse(parser.port.toString()) ?? 443;
+        final socket = await Socket.connect(parser.address, targetPort, timeout: const Duration(seconds: 3));
+        stopwatch.stop();
+        delay = stopwatch.elapsedMilliseconds;
+        await socket.close();
+      }
+
+      if (mounted) {
+        setState(() {
+          _pings[configId] = delay;
+          _pingLoading[configId] = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _pings[configId] = -1;
+          _pingLoading[configId] = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _toggleMainConnection() async {
+    if (_isConnectingProcess || _selectedConfigId == null) return;
+
+    if (_isConnected) {
+      setState(() => _isConnectingProcess = true);
+      try {
+        await v2ray.stopV2Ray();
+      } catch (_) {}
+      setState(() {
+        _isConnected = false;
+        _isConnectingProcess = false;
+      });
+      return;
+    }
+
+    final selectedConfig = _configs.firstWhere(
+      (c) => (c['id']?.toString() ?? c['name']) == _selectedConfigId,
+      orElse: () => null,
+    );
+
+    if (selectedConfig == null) return;
+
+    final String configUrl = (selectedConfig['config'] ?? '').toString().trim();
+
+    setState(() => _isConnectingProcess = true);
+
+    try {
+      final bool hasPermission = await v2ray.requestPermission();
+      if (hasPermission) {
+        // پارس کردن لینک کامل جهت استخراج تمام پروتکل‌ها (VLESS, WebSocket, XHTTP, REALITY و ...)
+        V2RayURL parser = V2ray.parseFromURL(configUrl);
+
+        await v2ray.startV2Ray(
+          remark: selectedConfig['name'] ?? parser.remark,
+          config: parser.getFullConfiguration(), // ارسال پیکربندی کامل استخراج‌شده
+          proxyOnly: false,
+        );
+      } else {
+        setState(() => _isConnectingProcess = false);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در اتصال: $e'), backgroundColor: Colors.redAccent),
+      );
+      setState(() => _isConnectingProcess = false);
+    }
+  }
+
+  String _getProtocolType(String url) {
+    if (url.startsWith('vless://')) return 'VLESS';
+    if (url.startsWith('vmess://')) return 'VMESS';
+    if (url.startsWith('trojan://')) return 'TROJAN';
+    if (url.startsWith('shadowsocks://') || url.startsWith('ss://')) return 'SS';
+    return 'VLESS';
+  }
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+    double usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
+    double maxGb = (_userData?['max_volume_gb'] ?? 0).toDouble();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Xray Ultra', style: TextStyle(fontSize: 18, color: Colors.white70)),
+        centerTitle: true,
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B9BB4)))
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    itemCount: _configs.length,
+                    itemBuilder: (context, index) {
+                      final item = _configs[index];
+                      final String configId = item['id']?.toString() ?? item['name'];
+                      final String configUrl = (item['config'] ?? '').toString();
+                      final String protocol = _getProtocolType(configUrl);
+                      final bool isSelected = (_selectedConfigId == configId);
+                      final int ping = _pings[configId] ?? 0;
+                      final bool isPingLoading = _pingLoading[configId] ?? false;
+
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedConfigId = configId;
+                          });
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected ? const Color(0xFF2A3045) : const Color(0xFF232738),
+                            borderRadius: BorderRadius.circular(12),
+                            border: isSelected ? Border.all(color: const Color(0xFF7A93D1), width: 1.5) : null,
+                          ),
+                          child: IntrinsicHeight(
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 26,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.black26,
+                                    borderRadius: BorderRadius.only(
+                                      topLeft: Radius.circular(12),
+                                      bottomLeft: Radius.circular(12),
+                                    ),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: RotatedBox(
+                                    quarterTurns: 3,
+                                    child: Text(
+                                      protocol,
+                                      style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          item['name'] ?? 'سرور Xray',
+                                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          configUrl.isNotEmpty ? configUrl : '',
+                                          style: const TextStyle(color: Colors.white38, fontSize: 11),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: isPingLoading
+                                              ? Colors.white10
+                                              : (ping > 0 ? const Color(0xFF2E5A3C) : const Color(0xFF613137)),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          isPingLoading
+                                              ? '...'
+                                              : (ping > 0 ? '${ping}ms' : '-1ms'),
+                                          style: TextStyle(
+                                            color: isPingLoading
+                                                ? Colors.white54
+                                                : (ping > 0 ? const Color(0xFF81C784) : const Color(0xFFE57373)),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          Container(
+            color: const Color(0xFF28314A),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.circle,
+                  size: 12,
+                  color: _isConnected ? Colors.greenAccent : Colors.redAccent,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _isConnected
+                        ? 'CONNECTED, [long press->show ip,speed test]'
+                        : 'OFF , [long press->show ip,speed test]',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 45.0),
+        child: FloatingActionButton(
+          backgroundColor: _isConnected ? const Color(0xFF4CAF50) : const Color(0xFFB0BEC5),
+          onPressed: _toggleMainConnection,
+          child: _isConnectingProcess
+              ? const CircularProgressIndicator(color: Colors.white)
+              : Icon(
+                  Icons.power_settings_new,
+                  color: _isConnected ? Colors.white : const Color(0xFF1B1D29),
+                  size: 30,
+                ),
+        ),
+      ),
+      bottomNavigationBar: Container(
+        color: const Color(0xFF151821),
+        height: 60,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Icon(icon, color: Colors.white60, size: 24),
-            const SizedBox(height: 3),
-            Text(label, style: const TextStyle(color: Colors.white60, fontSize: 10)),
+            InkWell(
+              onTap: _fetchConfigs,
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.file_download_outlined, color: Colors.white54, size: 20),
+                  SizedBox(height: 2),
+                  Text('Get Config', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                ],
+              ),
+            ),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'حجم: ${usedGb.toStringAsFixed(2)} / ${maxGb > 0 ? maxGb.toStringAsFixed(1) : "∞"} GB',
+                  style: TextStyle(color: Colors.white.withOpacity(0.87), fontSize: 11, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'اعتبار: ${_remainingDays == 999 ? "نامحدود" : "$_remainingDays روز باقی‌مانده"}',
+                  style: const TextStyle(color: Colors.white54, fontSize: 10),
+                ),
+              ],
+            ),
+            InkWell(
+              onTap: _isTestingAllPings ? null : _testAllPings,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.bolt, color: _isTestingAllPings ? Colors.amber : Colors.white54, size: 20),
+                  const SizedBox(height: 2),
+                  Text(_isTestingAllPings ? 'Testing...' : 'Test', style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                ],
+              ),
+            ),
           ],
         ),
       ),
