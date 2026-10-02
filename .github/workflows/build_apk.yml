@@ -2,9 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -13,10 +11,10 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -27,24 +25,14 @@ jobs:
           flutter-version: '3.22.3'
           channel: 'stable'
 
-      - name: Ensure Android Platform Exists
-        run: flutter create --platforms=android --org com.v2ray --project-name xray_ultra .
-
       - name: Install Dependencies
         run: flutter pub get
-
-      - name: Configure NDK and Gradle Rules
-        run: |
-          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle || true
-          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/g' android/app/build.gradle || true
-          sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 35/g' android/app/build.gradle || true
-          printf "distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\nzipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\ndistributionUrl=https\://services.gradle.org/distributions/gradle-8.4-all.zip\n" > android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Build Release APK
         run: flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
-          name: Xray-Ultra-Release-APK
+          name: xray-ultra-release
           path: build/app/outputs/flutter-apk/app-release.apk
