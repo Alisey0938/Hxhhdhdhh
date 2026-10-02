@@ -1,4 +1,4 @@
-چname: xray_ultra
+name: xray_ultra
 description: "A Flutter V2Ray VPN client application."
 publish_to: 'none'
 
@@ -13,7 +13,10 @@ dependencies:
 
   http: ^1.2.0
   shared_preferences: ^2.2.2
-  flutter_v2ray: ^0.1.0
+  flutter_v2ray_client:
+    git:
+      url: https://github.com/azad-academy/flutter_v2ray_client
+      ref: main
 
 dev_dependencies:
   flutter_test:
