@@ -232,7 +232,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
   bool _isConnected = false;
 
   Map<String, dynamic>? _userData;
-  
+
   int _lastSessionUpload = 0;
   int _lastSessionDownload = 0;
   int _accumulatedUsedBytes = 0;
@@ -246,8 +246,8 @@ class _ServerListScreenState extends State<ServerListScreen> {
     _initV2Ray();
     _fetchUserDataAndCheck();
     _fetchConfigs();
-    
-    _userCheckTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+
+    _userCheckTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       _fetchUserDataAndCheck();
     });
   }
@@ -289,9 +289,9 @@ class _ServerListScreenState extends State<ServerListScreen> {
       final res = await http.get(Uri.parse("${firebaseUrl}users/${widget.userId}.json"));
       if (res.statusCode == 200 && res.body != 'null') {
         final data = json.decode(res.body);
-        
+
         if (data == null) {
-          _logoutUser('حساب کاربری شما توسط ادمین حذف شده است.');
+          _logoutUser('حساب کاربری شما حذف شده است.');
           return;
         }
 
@@ -330,12 +330,8 @@ class _ServerListScreenState extends State<ServerListScreen> {
         }
 
         if (mounted) setState(() {});
-      } else if (res.body == 'null') {
-        _logoutUser('حساب کاربری شما یافت نشد.');
       }
-    } catch (e) {
-      debugPrint("خطا در به‌روزرسانی داده کاربر: $e");
-    }
+    } catch (_) {}
   }
 
   void _calculateAndSaveTraffic(int currentUpload, int currentDownload) async {
@@ -367,14 +363,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
           Uri.parse("${firebaseUrl}users/${widget.userId}.json"),
           body: json.encode({"used_bytes": _accumulatedUsedBytes}),
         );
-      } catch (e) {
-        debugPrint("خطا در ثبت حجم: $e");
-      }
-
-      double maxGb = (_userData!['max_volume_gb'] ?? 0).toDouble();
-      if (maxGb > 0 && (_accumulatedUsedBytes / (1024 * 1024 * 1024)) >= maxGb) {
-        _logoutUser('حجم مجاز شما به پایان رسید.');
-      }
+      } catch (_) {}
     }
   }
 
@@ -425,9 +414,20 @@ class _ServerListScreenState extends State<ServerListScreen> {
       } else {
         setState(() => _isLoading = false);
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  String _cleanUrl(String rawUrl) {
+    String url = rawUrl.trim();
+    if (url.contains('type=xhttp')) {
+      url = url.replaceAll('type=xhttp', 'type=ws');
+    }
+    if (url.contains('type=httpupgrade')) {
+      url = url.replaceAll('type=httpupgrade', 'type=ws');
+    }
+    return url;
   }
 
   Future<void> _testAllPings() async {
@@ -444,17 +444,17 @@ class _ServerListScreenState extends State<ServerListScreen> {
   }
 
   Future<void> _testSinglePing(Map<String, dynamic> item) async {
-    final String configUrl = (item['config'] ?? '').toString().trim();
+    final String rawUrl = (item['config'] ?? '').toString();
     final String configId = item['id']?.toString() ?? item['name'];
 
-    if (configUrl.isEmpty) return;
+    if (rawUrl.isEmpty) return;
 
-    if (mounted) {
-      setState(() => _pingLoading[configId] = true);
-    }
+    if (mounted) setState(() => _pingLoading[configId] = true);
 
     try {
+      final configUrl = _cleanUrl(rawUrl);
       V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
+
       int delay = await flutterV2ray.getServerDelay(
         config: parser.getFullConfiguration(),
         url: 'https://1.1.1.1',
@@ -475,7 +475,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
           _pingLoading[configId] = false;
         });
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
           _pings[configId] = -1;
@@ -507,13 +507,13 @@ class _ServerListScreenState extends State<ServerListScreen> {
 
     if (selectedConfig == null) return;
 
-    final String configUrl = (selectedConfig['config'] ?? '').toString().trim();
-
+    final String rawUrl = (selectedConfig['config'] ?? '').toString();
     setState(() => _isConnectingProcess = true);
 
     try {
       final bool hasPermission = await flutterV2ray.requestPermission();
       if (hasPermission) {
+        final configUrl = _cleanUrl(rawUrl);
         V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
 
         await flutterV2ray.startV2Ray(
@@ -537,7 +537,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
     if (url.startsWith('vmess://')) return 'VMESS';
     if (url.startsWith('trojan://')) return 'TROJAN';
     if (url.startsWith('shadowsocks://') || url.startsWith('ss://')) return 'SS';
-    return 'VLESS';
+    return 'XRAY';
   }
 
   @override
@@ -676,9 +676,7 @@ class _ServerListScreenState extends State<ServerListScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    _isConnected
-                        ? 'CONNECTED, [long press->show ip,speed test]'
-                        : 'OFF , [long press->show ip,speed test]',
+                    _isConnected ? 'CONNECTED' : 'DISCONNECTED',
                     style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ),
