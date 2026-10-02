@@ -25,6 +25,9 @@ jobs:
           flutter-version: '3.22.3'
           channel: 'stable'
 
+      - name: Ensure Android Platform Exists
+        run: flutter create --platforms=android .
+
       - name: Install Dependencies
         run: flutter pub get
 
