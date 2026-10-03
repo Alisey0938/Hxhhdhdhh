@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_v2ray/flutter_v2ray.dart';
 import 'package:http/http.dart' as http;
@@ -90,6 +91,19 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
+  // دریافت شناسه یکتا برای هر دستگاه
+  Future<String> _getDeviceId() async {
+    final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+    if (Platform.isAndroid) {
+      final androidInfo = await deviceInfo.androidInfo;
+      return androidInfo.id; // شناسه یکتای اندروید
+    } else if (Platform.isIOS) {
+      final iosInfo = await deviceInfo.iosInfo;
+      return iosInfo.identifierForVendor ?? UniqueKey().toString();
+    }
+    return UniqueKey().toString();
+  }
+
   Future<void> _login() async {
     final username = _usernameController.text.trim();
     final password = _passwordController.text.trim();
@@ -124,8 +138,32 @@ class _LoginScreenState extends State<LoginScreen> {
             return;
           }
 
+          // === بررسی سقف تعداد کاربر/دستگاه همزمان ===
+          final String deviceId = await _getDeviceId();
+          int maxDevices = (userData!['max_devices'] ?? 1); // در صورت عدم تنظیم، پیش‌فرض ۱ دستگاه
+          
+          Map<String, dynamic> activeDevices = {};
+          if (userData!['active_devices'] != null) {
+            activeDevices = Map<String, dynamic>.from(userData!['active_devices']);
+          }
+
+          // اگر این دستگاه قبلاً ثبت نشده و سقف دستگاه‌ها پر شده است
+          if (!activeDevices.containsKey(deviceId) && activeDevices.length >= maxDevices) {
+            _showError('محدودیت تعداد کاربر! ظرفیت اتصال همزمان این حساب پر شده است.');
+            setState(() => _isLoading = false);
+            return;
+          }
+
+          // ثبت شناسه این دستگاه در فایربیس
+          activeDevices[deviceId] = DateTime.now().toIso8601String();
+          await http.patch(
+            Uri.parse("https://pane-dcc9a-default-rtdb.firebaseio.com/users/$foundUserId.json"),
+            body: json.encode({"active_devices": activeDevices}),
+          );
+
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('user_id', foundUserId!);
+          await prefs.setString('device_id', deviceId);
 
           if (mounted) {
             Navigator.pushReplacement(
@@ -392,7 +430,19 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     } catch (_) {}
 
     final prefs = await SharedPreferences.getInstance();
+    final String? deviceId = prefs.getString('device_id');
+
+    // حذف دستگاه از لیست دستگاه‌های فعال کاربر هنگام خروج
+    if (deviceId != null && deviceId.isNotEmpty) {
+      try {
+        await http.delete(
+          Uri.parse("${firebaseUrl}users/${widget.userId}/active_devices/$deviceId.json"),
+        );
+      } catch (_) {}
+    }
+
     await prefs.remove('user_id');
+    await prefs.remove('device_id');
 
     if (mounted) {
       if (reason.isNotEmpty) {
@@ -487,7 +537,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       final configUrl = _cleanUrl(rawUrl);
       V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
 
-      // تست پینگ دقیق مشابه v2rayNG با آدرس استاندارد generate_204
       int delay = await flutterV2ray.getServerDelay(
         config: parser.getFullConfiguration(),
         url: 'http://www.gstatic.com/generate_204',
