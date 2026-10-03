@@ -459,7 +459,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     }
 
     if (mounted) {
-      // مرتب‌سازی لیست کانفیگ‌ها بر اساس پینگ (کمترین به بیشترین)
       _configs.sort((a, b) {
         final String idA = a['id']?.toString() ?? a['name'];
         final String idB = b['id']?.toString() ?? b['name'];
@@ -488,18 +487,27 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       final configUrl = _cleanUrl(rawUrl);
       V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
 
+      // تست پینگ دقیق مشابه v2rayNG با آدرس استاندارد generate_204
       int delay = await flutterV2ray.getServerDelay(
         config: parser.getFullConfiguration(),
-        url: 'https://1.1.1.1',
-      );
+        url: 'http://www.gstatic.com/generate_204',
+      ).timeout(const Duration(seconds: 3), onTimeout: () => -1);
 
       if (delay <= 0) {
         final stopwatch = Stopwatch()..start();
         final int targetPort = int.tryParse(parser.port.toString()) ?? 443;
-        final socket = await Socket.connect(parser.address, targetPort, timeout: const Duration(seconds: 3));
-        stopwatch.stop();
-        delay = stopwatch.elapsedMilliseconds;
-        await socket.close();
+        try {
+          final socket = await Socket.connect(
+            parser.address,
+            targetPort,
+            timeout: const Duration(seconds: 2),
+          );
+          stopwatch.stop();
+          delay = stopwatch.elapsedMilliseconds;
+          await socket.close();
+        } catch (_) {
+          delay = -1;
+        }
       }
 
       if (mounted) {
