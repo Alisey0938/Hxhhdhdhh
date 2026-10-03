@@ -610,7 +610,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     return 'XRAY';
   }
 
-  @style
   @override
   Widget build(BuildContext context) {
     double usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
