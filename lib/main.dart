@@ -217,7 +217,7 @@ class ServerListScreen extends StatefulWidget {
   State<ServerListScreen> createState() => _ServerListScreenState();
 }
 
-class _ServerListScreenState extends State<ServerListScreen> {
+class _ServerListScreenState extends State<ServerListScreen> with WidgetsBindingObserver {
   final String firebaseUrl = "https://pane-dcc9a-default-rtdb.firebaseio.com/";
 
   late FlutterV2ray flutterV2ray;
@@ -243,19 +243,28 @@ class _ServerListScreenState extends State<ServerListScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initV2Ray();
     _fetchUserDataAndCheck();
     _fetchConfigs();
 
-    _userCheckTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    _userCheckTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       _fetchUserDataAndCheck();
     });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _userCheckTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _fetchUserDataAndCheck();
+    }
   }
 
   void _initV2Ray() async {
@@ -265,18 +274,22 @@ class _ServerListScreenState extends State<ServerListScreen> {
         final stateUpper = status.state.toUpperCase();
 
         if (stateUpper == 'CONNECTED') {
-          setState(() {
-            _isConnected = true;
-            _isConnectingProcess = false;
-          });
+          if (!_isConnected) {
+            setState(() {
+              _isConnected = true;
+              _isConnectingProcess = false;
+            });
+          }
           _calculateAndSaveTraffic(status.upload, status.download);
         } else if (stateUpper == 'DISCONNECTED' || stateUpper == 'STOPPED' || stateUpper == 'IDLE') {
-          setState(() {
-            _isConnected = false;
-            _isConnectingProcess = false;
-            _lastSessionUpload = 0;
-            _lastSessionDownload = 0;
-          });
+          if (_isConnected) {
+            setState(() {
+              _isConnected = false;
+              _isConnectingProcess = false;
+              _lastSessionUpload = 0;
+              _lastSessionDownload = 0;
+            });
+          }
         }
       },
     );
@@ -364,6 +377,11 @@ class _ServerListScreenState extends State<ServerListScreen> {
           body: json.encode({"used_bytes": _accumulatedUsedBytes}),
         );
       } catch (_) {}
+
+      double maxGb = (_userData!['max_volume_gb'] ?? 0).toDouble();
+      if (maxGb > 0 && (_accumulatedUsedBytes / (1024 * 1024 * 1024)) >= maxGb) {
+        _logoutUser('حجم مجاز شما به پایان رسید.');
+      }
     }
   }
 
@@ -377,9 +395,11 @@ class _ServerListScreenState extends State<ServerListScreen> {
     await prefs.remove('user_id');
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(reason), backgroundColor: Colors.redAccent),
-      );
+      if (reason.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(reason), backgroundColor: Colors.redAccent),
+        );
+      }
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
     }
   }
@@ -549,6 +569,35 @@ class _ServerListScreenState extends State<ServerListScreen> {
       appBar: AppBar(
         title: const Text('Xray Ultra', style: TextStyle(fontSize: 18, color: Colors.white70)),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.redAccent),
+            tooltip: 'خروج از حساب',
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: const Color(0xFF222536),
+                  title: const Text('خروج از حساب'),
+                  content: const Text('آیا می‌خواهید از حساب کاربری خود خارج شوید؟'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('انصراف'),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _logoutUser('');
+                      },
+                      child: const Text('خروج', style: TextStyle(color: Colors.redAccent)),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [
