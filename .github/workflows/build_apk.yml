@@ -2,7 +2,9 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -10,11 +12,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -22,20 +23,21 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.3'
           channel: 'stable'
 
       - name: Ensure Android Platform Exists
-        run: flutter create --platforms=android --project-name xray_ultra .
+        run: flutter create --platforms=android .
 
+      # دریافت و نصب تمامی پکیج‌های pubspec.yaml
       - name: Install Dependencies
         run: flutter pub get
 
+      # ساخت فایل APK
       - name: Build Release APK
         run: flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
-          name: xray-ultra-release
+          name: app-release
           path: build/app/outputs/flutter-apk/app-release.apk
