@@ -459,6 +459,19 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     }
 
     if (mounted) {
+      // مرتب‌سازی لیست کانفیگ‌ها بر اساس پینگ (کمترین به بیشترین)
+      _configs.sort((a, b) {
+        final String idA = a['id']?.toString() ?? a['name'];
+        final String idB = b['id']?.toString() ?? b['name'];
+        final int pingA = _pings[idA] ?? 999999;
+        final int pingB = _pings[idB] ?? 999999;
+
+        final int validPingA = pingA > 0 ? pingA : 999999;
+        final int validPingB = pingB > 0 ? pingB : 999999;
+
+        return validPingA.compareTo(validPingB);
+      });
+
       setState(() => _isTestingAllPings = false);
     }
   }
@@ -618,6 +631,16 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
                       return GestureDetector(
                         onTap: () {
+                          if (_isConnected) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('لطفاً ابتدا اتصال فعلی را قطع کنید.'),
+                                backgroundColor: Colors.orangeAccent,
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                            return;
+                          }
                           setState(() {
                             _selectedConfigId = configId;
                           });
@@ -653,20 +676,13 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           item['name'] ?? 'سرور Xray',
-                                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          configUrl.isNotEmpty ? configUrl : '',
-                                          style: const TextStyle(color: Colors.white38, fontSize: 11),
+                                          style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -681,7 +697,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                         decoration: BoxDecoration(
                                           color: isPingLoading
                                               ? Colors.white10
