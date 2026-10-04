@@ -162,10 +162,7 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               const Icon(Icons.vpn_key_rounded, size: 80, color: Color(0xFF8B9BB4)),
               const SizedBox(height: 12),
-              const Text(
-                'XRAY ULTRA',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5),
-              ),
+              const Text('XRAY ULTRA', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
               const SizedBox(height: 32),
               TextField(
                 controller: _usernameController,
@@ -238,7 +235,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   int _lastSessionUpload = 0;
   int _lastSessionDownload = 0;
   int _accumulatedUsedBytes = 0;
-  int _remainingDays = 0;
+  String _remainingTimeText = '...';
 
   Timer? _userCheckTimer;
 
@@ -272,20 +269,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     }
   }
 
-  Future<void> _fetchAnnouncement() async {
-    try {
-      final res = await http.get(Uri.parse("${firebaseUrl}announcement.json"));
-      if (res.statusCode == 200 && res.body != 'null') {
-        final data = json.decode(res.body);
-        if (mounted) {
-          setState(() {
-            _announcementData = data;
-          });
-        }
-      }
-    } catch (_) {}
-  }
-
   void _initV2Ray() async {
     flutterV2ray = FlutterV2ray(
       onStatusChanged: (status) {
@@ -316,6 +299,16 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     await flutterV2ray.initializeV2Ray();
   }
 
+  Future<void> _fetchAnnouncement() async {
+    try {
+      final res = await http.get(Uri.parse("${firebaseUrl}announcement.json"));
+      if (res.statusCode == 200 && res.body != 'null') {
+        final data = json.decode(res.body);
+        if (mounted) setState(() => _announcementData = data);
+      }
+    } catch (_) {}
+  }
+
   Future<void> _fetchUserDataAndCheck() async {
     try {
       final res = await http.get(Uri.parse("${firebaseUrl}users/${widget.userId}.json"));
@@ -335,21 +328,26 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         _userData = Map<String, dynamic>.from(data);
         _accumulatedUsedBytes = (data['used_bytes'] ?? 0);
 
-        if (data['created_at'] != null && data['max_days'] != null && data['max_days'] > 0) {
-          final createdDate = DateTime.parse(data['created_at']);
-          final maxDays = (data['max_days'] as num).toInt();
-          final expireDate = createdDate.add(Duration(days: maxDays));
-          final difference = expireDate.difference(DateTime.now()).inDays;
+        // محاسبه زمان دقیق انقضا
+        if (data['expire_at'] != null) {
+          final expireDate = DateTime.parse(data['expire_at']);
+          final now = DateTime.now();
+          final diff = expireDate.difference(now);
 
-          if (difference <= 0) {
-            _remainingDays = 0;
+          if (diff.isNegative) {
             _logoutUser('اعتبار زمانی حساب شما به پایان رسیده است.');
             return;
           } else {
-            _remainingDays = difference;
+            if (diff.inDays > 0) {
+              _remainingTimeText = '${diff.inDays} روز باقی‌مانده';
+            } else if (diff.inHours > 0) {
+              _remainingTimeText = '${diff.inHours} ساعت باقی‌مانده';
+            } else {
+              _remainingTimeText = '${diff.inMinutes} دقیقه باقی‌مانده';
+            }
           }
         } else {
-          _remainingDays = 999;
+          _remainingTimeText = 'نامحدود';
         }
 
         double maxGb = (data['max_volume_gb'] ?? 0).toDouble();
@@ -458,9 +456,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     }
   }
 
-  String _cleanUrl(String rawUrl) {
-    return rawUrl.trim();
-  }
+  String _cleanUrl(String rawUrl) => rawUrl.trim();
 
   Future<void> _testAllPings() async {
     if (_isTestingAllPings) return;
@@ -666,7 +662,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         actions: [
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.redAccent),
-            tooltip: 'خروج از حساب',
             onPressed: () {
               showDialog(
                 context: context,
@@ -675,10 +670,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
                   title: const Text('خروج از حساب'),
                   content: const Text('آیا می‌خواهید از حساب کاربری خود خارج شوید؟'),
                   actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('انصراف'),
-                    ),
+                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('انصراف')),
                     TextButton(
                       onPressed: () {
                         Navigator.pop(ctx);
@@ -759,16 +751,11 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
                                 Expanded(
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(vertical: 14),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          item['name'] ?? 'سرور Xray',
-                                          style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
+                                    child: Text(
+                                      item['name'] ?? 'سرور Xray',
+                                      style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ),
@@ -787,9 +774,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
                                           borderRadius: BorderRadius.circular(10),
                                         ),
                                         child: Text(
-                                          isPingLoading
-                                              ? '...'
-                                              : (ping > 0 ? '${ping}ms' : '-1ms'),
+                                          isPingLoading ? '...' : (ping > 0 ? '${ping}ms' : '-1ms'),
                                           style: TextStyle(
                                             color: isPingLoading
                                                 ? Colors.white54
@@ -815,11 +800,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
-                Icon(
-                  Icons.circle,
-                  size: 12,
-                  color: _isConnected ? Colors.greenAccent : Colors.redAccent,
-                ),
+                Icon(Icons.circle, size: 12, color: _isConnected ? Colors.greenAccent : Colors.redAccent),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -839,11 +820,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
           onPressed: _toggleMainConnection,
           child: _isConnectingProcess
               ? const CircularProgressIndicator(color: Colors.white)
-              : Icon(
-                  Icons.power_settings_new,
-                  color: _isConnected ? Colors.white : const Color(0xFF1B1D29),
-                  size: 30,
-                ),
+              : Icon(Icons.power_settings_new, color: _isConnected ? Colors.white : const Color(0xFF1B1D29), size: 30),
         ),
       ),
       bottomNavigationBar: Container(
@@ -873,7 +850,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'اعتبار: ${_remainingDays == 999 ? "نامحدود" : "$_remainingDays روز باقی‌مانده"}',
+                  'اعتبار: $_remainingTimeText',
                   style: const TextStyle(color: Colors.white54, fontSize: 10),
                 ),
               ],
