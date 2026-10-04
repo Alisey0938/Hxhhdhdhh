@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_v2ray/flutter_v2ray.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -232,6 +233,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   bool _isConnected = false;
 
   Map<String, dynamic>? _userData;
+  Map<String, dynamic>? _announcementData;
 
   int _lastSessionUpload = 0;
   int _lastSessionDownload = 0;
@@ -247,9 +249,11 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     _initV2Ray();
     _fetchUserDataAndCheck();
     _fetchConfigs();
+    _fetchAnnouncement();
 
     _userCheckTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       _fetchUserDataAndCheck();
+      _fetchAnnouncement();
     });
   }
 
@@ -264,7 +268,22 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _fetchUserDataAndCheck();
+      _fetchAnnouncement();
     }
+  }
+
+  Future<void> _fetchAnnouncement() async {
+    try {
+      final res = await http.get(Uri.parse("${firebaseUrl}announcement.json"));
+      if (res.statusCode == 200 && res.body != 'null') {
+        final data = json.decode(res.body);
+        if (mounted) {
+          setState(() {
+            _announcementData = data;
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   void _initV2Ray() async {
@@ -440,14 +459,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   }
 
   String _cleanUrl(String rawUrl) {
-    String url = rawUrl.trim();
-    if (url.contains('type=xhttp')) {
-      url = url.replaceAll('type=xhttp', 'type=ws');
-    }
-    if (url.contains('type=httpupgrade')) {
-      url = url.replaceAll('type=httpupgrade', 'type=ws');
-    }
-    return url;
+    return rawUrl.trim();
   }
 
   Future<void> _testAllPings() async {
@@ -487,7 +499,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       final configUrl = _cleanUrl(rawUrl);
       V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
 
-      // تست پینگ دقیق مشابه v2rayNG با آدرس استاندارد generate_204
       int delay = await flutterV2ray.getServerDelay(
         config: parser.getFullConfiguration(),
         url: 'http://www.gstatic.com/generate_204',
@@ -581,6 +592,68 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     return 'XRAY';
   }
 
+  Widget _buildAnnouncementBanner() {
+    if (_announcementData == null || _announcementData!['enabled'] != true) {
+      return const SizedBox.shrink();
+    }
+
+    final String text = _announcementData!['text'] ?? '';
+    final String imageUrl = _announcementData!['image_url'] ?? '';
+    final String targetUrl = _announcementData!['target_url'] ?? '';
+
+    return GestureDetector(
+      onTap: () async {
+        if (targetUrl.isNotEmpty) {
+          final uri = Uri.parse(targetUrl);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2E354F),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF8B5CF6).withOpacity(0.5)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (imageUrl.isNotEmpty)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  imageUrl,
+                  width: double.infinity,
+                  height: 120,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                ),
+              ),
+            if (imageUrl.isNotEmpty && text.isNotEmpty) const SizedBox(height: 8),
+            if (text.isNotEmpty)
+              Row(
+                children: [
+                  const Icon(Icons.campaign, color: Color(0xFFA78BFA), size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      text,
+                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  if (targetUrl.isNotEmpty)
+                    const Icon(Icons.arrow_forward_ios, color: Colors.white38, size: 14),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     double usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
@@ -622,6 +695,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       ),
       body: Column(
         children: [
+          _buildAnnouncementBanner(),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B9BB4)))
