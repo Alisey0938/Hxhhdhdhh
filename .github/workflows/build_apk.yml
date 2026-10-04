@@ -26,7 +26,10 @@ jobs:
           channel: 'stable'
 
       - name: Ensure Android Platform Exists
-        run: flutter create --platforms=android --project-name xray_ultra .
+        run: |
+          if [ ! -d "android" ]; then
+            flutter create --platforms=android --project-name xray_ultra .
+          fi
 
       - name: Install Dependencies
         run: flutter pub get
