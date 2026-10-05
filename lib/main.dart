@@ -164,8 +164,11 @@ class _LoginScreenState extends State<LoginScreen> {
           });
         }
 
-        if (foundUserId != null && rawUserData != null) {
-          final Map<String, dynamic> currentUserData = Map<String, dynamic>.from(rawUserData);
+        final finalUserId = foundUserId;
+        final finalUserData = rawUserData;
+
+        if (finalUserId != null && finalUserData != null) {
+          final Map<String, dynamic> currentUserData = Map<String, dynamic>.from(finalUserData);
 
           if (!_isTruthy(currentUserData['active'])) {
             _showError('حساب کاربری شما غیرفعال شده است.');
@@ -202,13 +205,13 @@ class _LoginScreenState extends State<LoginScreen> {
           );
 
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('user_id', foundUserId);
+          await prefs.setString('user_id', finalUserId);
           await prefs.setString('device_id', deviceId);
 
           if (mounted) {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (_) => ServerListScreen(userId: foundUserId!)),
+              MaterialPageRoute(builder: (_) => ServerListScreen(userId: finalUserId)),
             );
           }
         } else {
