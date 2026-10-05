@@ -163,17 +163,16 @@ class _LoginScreenState extends State<LoginScreen> {
             }
           });
         }
+if (foundUserId != null && rawUserData != null) {
+  // استفاده از ! یا Map.from برای رفع خطای Null Safety
+  final Map<String, dynamic> currentUserData = Map<String, dynamic>.from(rawUserData);
 
-        if (foundUserId != null && rawUserData != null) {
-          final Map<String, dynamic> currentUserData = rawUserData;
-
-          if (!_isTruthy(currentUserData['active'])) {
-            _showError('حساب کاربری شما غیرفعال شده است.');
-            setState(() => _isLoading = false);
-            return;
-          }
-
-          final String deviceId = await _getDeviceId();
+  if (!_isTruthy(currentUserData['active'])) {
+    _showError('حساب کاربری شما غیرفعال شده است.');
+    setState(() => _isLoading = false);
+    return;
+  }
+  // ادامه کد...          final String deviceId = await _getDeviceId();
           final int maxDevices = int.tryParse(currentUserData['max_devices']?.toString() ?? '1') ?? 1;
 
           Map<String, dynamic> activeSessions = {};
