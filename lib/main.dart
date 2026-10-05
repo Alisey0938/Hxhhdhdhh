@@ -125,16 +125,32 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final res = await http.get(Uri.parse("$apiBase?action=get_users"));
       if (res.statusCode == 200 && res.body != 'null') {
-        final Map<String, dynamic> users = json.decode(res.body);
+        final dynamic decodedData = json.decode(res.body);
         String? foundUserId;
         Map<String, dynamic>? userData;
 
-        users.forEach((key, value) {
-          if (value != null && value['username'] == username && value['password'] == password) {
-            foundUserId = key;
-            userData = Map<String, dynamic>.from(value);
+        // اصلاح خطای کست لیست/مپ
+        if (decodedData is List) {
+          for (int i = 0; i < decodedData.length; i++) {
+            final item = decodedData[i];
+            if (item != null && item is Map) {
+              if (item['username'] == username && item['password'] == password) {
+                foundUserId = item['id']?.toString() ?? i.toString();
+                userData = Map<String, dynamic>.from(item);
+                break;
+              }
+            }
           }
-        });
+        } else if (decodedData is Map) {
+          decodedData.forEach((key, value) {
+            if (value != null && value is Map) {
+              if (value['username'] == username && value['password'] == password) {
+                foundUserId = key.toString();
+                userData = Map<String, dynamic>.from(value);
+              }
+            }
+          });
+        }
 
         if (foundUserId != null && userData != null) {
           if (userData!['active'] != true) {
@@ -537,12 +553,18 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     try {
       final response = await http.get(Uri.parse("$apiBase?action=get_configs"));
       if (response.statusCode == 200 && response.body != 'null') {
-        final data = json.decode(response.body);
+        final dynamic data = json.decode(response.body);
         List<dynamic> loadedConfigs = [];
 
-        if (data is Map) {
+        if (data is List) {
+          for (var item in data) {
+            if (item != null && item is Map && item['active'] == true) {
+              loadedConfigs.add(item);
+            }
+          }
+        } else if (data is Map) {
           data.forEach((key, value) {
-            if (value != null && value['active'] == true) {
+            if (value != null && value is Map && value['active'] == true) {
               loadedConfigs.add(value);
             }
           });
