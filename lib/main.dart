@@ -396,18 +396,20 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
           return;
         }
 
-        if (_deviceId != null) {
+        final currentDeviceId = _deviceId;
+        if (currentDeviceId != null) {
           Map<String, dynamic> activeSessions = {};
           if (data['active_sessions'] != null && data['active_sessions'] is Map) {
             activeSessions = Map<String, dynamic>.from(data['active_sessions']);
           }
 
-          if (!activeSessions.containsKey(_deviceId)) {
+          if (!activeSessions.containsKey(currentDeviceId)) {
             _logoutUser('دستگاه شما توسط ادمین از حساب خارج شد.');
             return;
           } else {
-            activeSessions[_deviceId] = {
-              ...activeSessions[_deviceId],
+            final session = activeSessions[currentDeviceId];
+            activeSessions[currentDeviceId] = {
+              if (session is Map) ...session,
               "last_seen": DateTime.now().toIso8601String(),
             };
             data['active_sessions'] = activeSessions;
@@ -502,10 +504,11 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       await flutterV2ray.stopV2Ray();
     } catch (_) {}
 
-    if (_deviceId != null && _userData != null) {
+    final currentDeviceId = _deviceId;
+    if (currentDeviceId != null && _userData != null) {
       try {
         Map<String, dynamic> activeSessions = Map<String, dynamic>.from(_userData!['active_sessions'] ?? {});
-        activeSessions.remove(_deviceId);
+        activeSessions.remove(currentDeviceId);
         _userData!['active_sessions'] = activeSessions;
         await http.post(
           Uri.parse("$apiBase?action=save_user"),
