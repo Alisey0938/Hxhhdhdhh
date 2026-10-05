@@ -92,18 +92,20 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
+  // استخراج شناسه یکتا و نام دستگاه جهت هماهنگی با پنل مدیریت
   Future<String> _getDeviceId() async {
     try {
       DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
       if (Platform.isAndroid) {
         AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-        return androidInfo.id;
+        String model = androidInfo.model.replaceAll(RegExp(r'[^\w\s-]'), '');
+        return model.isNotEmpty ? model : 'ANDROID_${androidInfo.id}';
       } else if (Platform.isIOS) {
         IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
-        return iosInfo.identifierForVendor ?? 'ios_device_${DateTime.now().millisecondsSinceEpoch}';
+        return iosInfo.model;
       }
     } catch (_) {}
-    return 'device_${DateTime.now().millisecondsSinceEpoch}';
+    return 'DEVICE_${DateTime.now().millisecondsSinceEpoch}';
   }
 
   Future<void> _login() async {
@@ -140,21 +142,22 @@ class _LoginScreenState extends State<LoginScreen> {
             return;
           }
 
-          // بررسی محدودیت هم‌زمانی دستگاه‌ها
           final String deviceId = await _getDeviceId();
           final int maxDevices = (userData!['max_devices'] ?? 1);
-          final Map<String, dynamic> activeSessions = userData!['active_sessions'] != null
-              ? Map<String, dynamic>.from(userData!['active_sessions'])
-              : {};
+          
+          Map<String, dynamic> activeSessions = {};
+          if (userData!['active_sessions'] != null && userData!['active_sessions'] is Map) {
+            activeSessions = Map<String, dynamic>.from(userData!['active_sessions']);
+          }
 
-          // اگر دستگاه فعلی قبلاً لاگین نکرده باشد و سقف مجاز پر شده باشد
+          // بررسی محدودیت تعداد دستگاه آنلاین
           if (!activeSessions.containsKey(deviceId) && activeSessions.length >= maxDevices) {
             _showError('محدودیت تعداد کاربر آنلاین! این اکانت در دستگاه دیگری فعال است.');
             setState(() => _isLoading = false);
             return;
           }
 
-          // ثبت یا بروزرسانی جلسه این دستگاه در فایربیس
+          // ثبت مشخصات ورود دستگاه در فایربیس
           final nowIso = DateTime.now().toIso8601String();
           final sessionData = {
             "login_at": activeSessions[deviceId]?['login_at'] ?? nowIso,
@@ -286,36 +289,38 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _initDeviceId();
+    _initDeviceIdAndStart();
     _initV2Ray();
-    _fetchUserDataAndCheck();
     _fetchConfigs();
     _fetchAnnouncement();
-
-    _userCheckTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      _fetchUserDataAndCheck();
-      _fetchAnnouncement();
-    });
   }
 
-  Future<void> _initDeviceId() async {
+  Future<void> _initDeviceIdAndStart() async {
     final prefs = await SharedPreferences.getInstance();
     _deviceId = prefs.getString('device_id');
+
     if (_deviceId == null) {
       try {
         DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
         if (Platform.isAndroid) {
           AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-          _deviceId = androidInfo.id;
+          String model = androidInfo.model.replaceAll(RegExp(r'[^\w\s-]'), '');
+          _deviceId = model.isNotEmpty ? model : 'ANDROID_${androidInfo.id}';
         } else if (Platform.isIOS) {
           IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
-          _deviceId = iosInfo.identifierForVendor ?? 'ios_device_${DateTime.now().millisecondsSinceEpoch}';
+          _deviceId = iosInfo.model;
         }
       } catch (_) {
-        _deviceId = 'device_${DateTime.now().millisecondsSinceEpoch}';
+        _deviceId = 'DEVICE_${DateTime.now().millisecondsSinceEpoch}';
       }
       await prefs.setString('device_id', _deviceId!);
     }
+
+    _fetchUserDataAndCheck();
+    _userCheckTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      _fetchUserDataAndCheck();
+      _fetchAnnouncement();
+    });
   }
 
   @override
@@ -389,17 +394,19 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
           return;
         }
 
-        // بررسی اینکه آیا این دستگاه توسط ادمین اخراج/حذف شده است یا خیر
+        // بررسی اخراج دستگاه از پنل مدیریت
         if (_deviceId != null) {
-          final Map<String, dynamic> activeSessions = data['active_sessions'] != null
-              ? Map<String, dynamic>.from(data['active_sessions'])
-              : {};
+          Map<String, dynamic> activeSessions = {};
+          if (data['active_sessions'] != null && data['active_sessions'] is Map) {
+            activeSessions = Map<String, dynamic>.from(data['active_sessions']);
+          }
 
+          // اگر دستگاه از لیست active_sessions حذف شده باشد، کاربر اخراج می‌شود
           if (!activeSessions.containsKey(_deviceId)) {
             _logoutUser('دستگاه شما توسط ادمین از حساب خارج شد.');
             return;
           } else {
-            // بروزرسانی زمان آخرین فعالیت دستگاه
+            // بروزرسانی زمان آخرین اتصال
             http.patch(
               Uri.parse("${firebaseUrl}users/${widget.userId}/active_sessions/$_deviceId.json"),
               body: json.encode({"last_seen": DateTime.now().toIso8601String()}),
@@ -410,7 +417,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         _userData = Map<String, dynamic>.from(data);
         _accumulatedUsedBytes = (data['used_bytes'] ?? 0);
 
-        // محاسبه زمان دقیق انقضا
         if (data['expire_at'] != null) {
           final expireDate = DateTime.parse(data['expire_at']);
           final now = DateTime.now();
@@ -484,13 +490,14 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     }
   }
 
+  // متد کامل خروج کاربر و حذف نشست از فایربیس
   void _logoutUser(String reason) async {
     _userCheckTimer?.cancel();
     try {
       await flutterV2ray.stopV2Ray();
     } catch (_) {}
 
-    // پاک کردن نشست این دستگاه از فایربیس
+    // پاک کردن این دستگاه از گره active_sessions فایربیس
     if (_deviceId != null) {
       try {
         await http.delete(
