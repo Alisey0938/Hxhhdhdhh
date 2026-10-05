@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart0:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -94,6 +94,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
   static const String apiBase = "https://socialmedia-ad.ir/api.php";
 
+  bool _isTruthy(dynamic value) {
+    if (value == null) return false;
+    if (value is bool) return value;
+    if (value is int) return value == 1;
+    if (value is String) {
+      final val = value.trim().toLowerCase();
+      return val == 'true' || val == '1';
+    }
+    return false;
+  }
+
   Future<String> _getDeviceId() async {
     try {
       DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
@@ -129,12 +140,12 @@ class _LoginScreenState extends State<LoginScreen> {
         String? foundUserId;
         Map<String, dynamic>? userData;
 
-        // اصلاح خطای کست لیست/مپ
         if (decodedData is List) {
           for (int i = 0; i < decodedData.length; i++) {
             final item = decodedData[i];
             if (item != null && item is Map) {
-              if (item['username'] == username && item['password'] == password) {
+              if (item['username']?.toString().trim() == username &&
+                  item['password']?.toString().trim() == password) {
                 foundUserId = item['id']?.toString() ?? i.toString();
                 userData = Map<String, dynamic>.from(item);
                 break;
@@ -144,7 +155,8 @@ class _LoginScreenState extends State<LoginScreen> {
         } else if (decodedData is Map) {
           decodedData.forEach((key, value) {
             if (value != null && value is Map) {
-              if (value['username'] == username && value['password'] == password) {
+              if (value['username']?.toString().trim() == username &&
+                  value['password']?.toString().trim() == password) {
                 foundUserId = key.toString();
                 userData = Map<String, dynamic>.from(value);
               }
@@ -153,18 +165,18 @@ class _LoginScreenState extends State<LoginScreen> {
         }
 
         if (foundUserId != null && userData != null) {
-          if (userData!['active'] != true) {
+          if (!_isTruthy(userData['active'])) {
             _showError('حساب کاربری شما غیرفعال شده است.');
             setState(() => _isLoading = false);
             return;
           }
 
           final String deviceId = await _getDeviceId();
-          final int maxDevices = (userData!['max_devices'] ?? 1);
+          final int maxDevices = int.tryParse(userData['max_devices']?.toString() ?? '1') ?? 1;
 
           Map<String, dynamic> activeSessions = {};
-          if (userData!['active_sessions'] != null && userData!['active_sessions'] is Map) {
-            activeSessions = Map<String, dynamic>.from(userData!['active_sessions']);
+          if (userData['active_sessions'] != null && userData['active_sessions'] is Map) {
+            activeSessions = Map<String, dynamic>.from(userData['active_sessions']);
           }
 
           if (!activeSessions.containsKey(deviceId) && activeSessions.length >= maxDevices) {
@@ -179,7 +191,7 @@ class _LoginScreenState extends State<LoginScreen> {
             "last_seen": nowIso,
           };
 
-          userData!['active_sessions'] = activeSessions;
+          userData['active_sessions'] = activeSessions;
 
           await http.post(
             Uri.parse("$apiBase?action=save_user"),
@@ -188,7 +200,7 @@ class _LoginScreenState extends State<LoginScreen> {
           );
 
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('user_id', foundUserId!);
+          await prefs.setString('user_id', foundUserId);
           await prefs.setString('device_id', deviceId);
 
           if (mounted) {
@@ -303,6 +315,17 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   Timer? _userCheckTimer;
   String? _deviceId;
 
+  bool _isTruthy(dynamic value) {
+    if (value == null) return false;
+    if (value is bool) return value;
+    if (value is int) return value == 1;
+    if (value is String) {
+      final val = value.trim().toLowerCase();
+      return val == 'true' || val == '1';
+    }
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -407,7 +430,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
           return;
         }
 
-        if (data['active'] != true) {
+        if (!_isTruthy(data['active'])) {
           _logoutUser('حساب کاربری شما غیرفعال شده است.');
           return;
         }
@@ -438,30 +461,34 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         }
 
         _userData = Map<String, dynamic>.from(data);
-        _accumulatedUsedBytes = (data['used_bytes'] ?? 0);
+        _accumulatedUsedBytes = int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
 
-        if (data['expire_at'] != null) {
-          final expireDate = DateTime.parse(data['expire_at']);
-          final now = DateTime.now();
-          final diff = expireDate.difference(now);
+        if (data['expire_at'] != null && data['expire_at'].toString().isNotEmpty) {
+          try {
+            final expireDate = DateTime.parse(data['expire_at'].toString());
+            final now = DateTime.now();
+            final diff = expireDate.difference(now);
 
-          if (diff.isNegative) {
-            _logoutUser('اعتبار زمانی حساب شما به پایان رسیده است.');
-            return;
-          } else {
-            if (diff.inDays > 0) {
-              _remainingTimeText = '${diff.inDays} روز باقی‌مانده';
-            } else if (diff.inHours > 0) {
-              _remainingTimeText = '${diff.inHours} ساعت باقی‌مانده';
+            if (diff.isNegative) {
+              _logoutUser('اعتبار زمانی حساب شما به پایان رسیده است.');
+              return;
             } else {
-              _remainingTimeText = '${diff.inMinutes} دقیقه باقی‌مانده';
+              if (diff.inDays > 0) {
+                _remainingTimeText = '${diff.inDays} روز باقی‌مانده';
+              } else if (diff.inHours > 0) {
+                _remainingTimeText = '${diff.inHours} ساعت باقی‌مانده';
+              } else {
+                _remainingTimeText = '${diff.inMinutes} دقیقه باقی‌مانده';
+              }
             }
+          } catch (_) {
+            _remainingTimeText = 'نامشخص';
           }
         } else {
           _remainingTimeText = 'نامحدود';
         }
 
-        double maxGb = (data['max_volume_gb'] ?? 0).toDouble();
+        double maxGb = double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0.0;
         if (maxGb > 0) {
           double usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
           if (usedGb >= maxGb) {
@@ -507,7 +534,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         );
       } catch (_) {}
 
-      double maxGb = (_userData!['max_volume_gb'] ?? 0).toDouble();
+      double maxGb = double.tryParse(_userData!['max_volume_gb']?.toString() ?? '0') ?? 0.0;
       if (maxGb > 0 && (_accumulatedUsedBytes / (1024 * 1024 * 1024)) >= maxGb) {
         _logoutUser('حجم مجاز شما به پایان رسید.');
       }
@@ -558,13 +585,13 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
         if (data is List) {
           for (var item in data) {
-            if (item != null && item is Map && item['active'] == true) {
+            if (item != null && item is Map && _isTruthy(item['active'])) {
               loadedConfigs.add(item);
             }
           }
         } else if (data is Map) {
           data.forEach((key, value) {
-            if (value != null && value is Map && value['active'] == true) {
+            if (value != null && value is Map && _isTruthy(value['active'])) {
               loadedConfigs.add(value);
             }
           });
@@ -720,7 +747,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   }
 
   Widget _buildAnnouncementBanner() {
-    if (_announcementData == null || _announcementData!['enabled'] != true) {
+    if (_announcementData == null || !_isTruthy(_announcementData!['enabled'])) {
       return const SizedBox.shrink();
     }
 
@@ -784,7 +811,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   @override
   Widget build(BuildContext context) {
     double usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
-    double maxGb = (_userData?['max_volume_gb'] ?? 0).toDouble();
+    double maxGb = double.tryParse(_userData?['max_volume_gb']?.toString() ?? '0') ?? 0.0;
 
     return Scaffold(
       appBar: AppBar(
