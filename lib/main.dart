@@ -6,6 +6,7 @@ import 'package:flutter_v2ray/flutter_v2ray.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -91,6 +92,20 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
+  Future<String> _getDeviceId() async {
+    try {
+      DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+        return androidInfo.id;
+      } else if (Platform.isIOS) {
+        IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
+        return iosInfo.identifierForVendor ?? 'ios_device_${DateTime.now().millisecondsSinceEpoch}';
+      }
+    } catch (_) {}
+    return 'device_${DateTime.now().millisecondsSinceEpoch}';
+  }
+
   Future<void> _login() async {
     final username = _usernameController.text.trim();
     final password = _passwordController.text.trim();
@@ -125,8 +140,35 @@ class _LoginScreenState extends State<LoginScreen> {
             return;
           }
 
+          // بررسی محدودیت هم‌زمانی دستگاه‌ها
+          final String deviceId = await _getDeviceId();
+          final int maxDevices = (userData!['max_devices'] ?? 1);
+          final Map<String, dynamic> activeSessions = userData!['active_sessions'] != null
+              ? Map<String, dynamic>.from(userData!['active_sessions'])
+              : {};
+
+          // اگر دستگاه فعلی قبلاً لاگین نکرده باشد و سقف مجاز پر شده باشد
+          if (!activeSessions.containsKey(deviceId) && activeSessions.length >= maxDevices) {
+            _showError('محدودیت تعداد کاربر آنلاین! این اکانت در دستگاه دیگری فعال است.');
+            setState(() => _isLoading = false);
+            return;
+          }
+
+          // ثبت یا بروزرسانی جلسه این دستگاه در فایربیس
+          final nowIso = DateTime.now().toIso8601String();
+          final sessionData = {
+            "login_at": activeSessions[deviceId]?['login_at'] ?? nowIso,
+            "last_seen": nowIso,
+          };
+
+          await http.put(
+            Uri.parse("https://pane-dcc9a-default-rtdb.firebaseio.com/users/$foundUserId/active_sessions/$deviceId.json"),
+            body: json.encode(sessionData),
+          );
+
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('user_id', foundUserId!);
+          await prefs.setString('device_id', deviceId);
 
           if (mounted) {
             Navigator.pushReplacement(
@@ -238,11 +280,13 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   String _remainingTimeText = '...';
 
   Timer? _userCheckTimer;
+  String? _deviceId;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _initDeviceId();
     _initV2Ray();
     _fetchUserDataAndCheck();
     _fetchConfigs();
@@ -252,6 +296,26 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       _fetchUserDataAndCheck();
       _fetchAnnouncement();
     });
+  }
+
+  Future<void> _initDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    _deviceId = prefs.getString('device_id');
+    if (_deviceId == null) {
+      try {
+        DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+        if (Platform.isAndroid) {
+          AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+          _deviceId = androidInfo.id;
+        } else if (Platform.isIOS) {
+          IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
+          _deviceId = iosInfo.identifierForVendor ?? 'ios_device_${DateTime.now().millisecondsSinceEpoch}';
+        }
+      } catch (_) {
+        _deviceId = 'device_${DateTime.now().millisecondsSinceEpoch}';
+      }
+      await prefs.setString('device_id', _deviceId!);
+    }
   }
 
   @override
@@ -323,6 +387,24 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         if (data['active'] != true) {
           _logoutUser('حساب کاربری شما غیرفعال شده است.');
           return;
+        }
+
+        // بررسی اینکه آیا این دستگاه توسط ادمین اخراج/حذف شده است یا خیر
+        if (_deviceId != null) {
+          final Map<String, dynamic> activeSessions = data['active_sessions'] != null
+              ? Map<String, dynamic>.from(data['active_sessions'])
+              : {};
+
+          if (!activeSessions.containsKey(_deviceId)) {
+            _logoutUser('دستگاه شما توسط ادمین از حساب خارج شد.');
+            return;
+          } else {
+            // بروزرسانی زمان آخرین فعالیت دستگاه
+            http.patch(
+              Uri.parse("${firebaseUrl}users/${widget.userId}/active_sessions/$_deviceId.json"),
+              body: json.encode({"last_seen": DateTime.now().toIso8601String()}),
+            );
+          }
         }
 
         _userData = Map<String, dynamic>.from(data);
@@ -408,8 +490,18 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       await flutterV2ray.stopV2Ray();
     } catch (_) {}
 
+    // پاک کردن نشست این دستگاه از فایربیس
+    if (_deviceId != null) {
+      try {
+        await http.delete(
+          Uri.parse("${firebaseUrl}users/${widget.userId}/active_sessions/$_deviceId.json"),
+        );
+      } catch (_) {}
+    }
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('user_id');
+    await prefs.remove('device_id');
 
     if (mounted) {
       if (reason.isNotEmpty) {
