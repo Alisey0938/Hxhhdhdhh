@@ -163,16 +163,17 @@ class _LoginScreenState extends State<LoginScreen> {
             }
           });
         }
-if (foundUserId != null && rawUserData != null) {
-  // استفاده از ! یا Map.from برای رفع خطای Null Safety
-  final Map<String, dynamic> currentUserData = Map<String, dynamic>.from(rawUserData);
 
-  if (!_isTruthy(currentUserData['active'])) {
-    _showError('حساب کاربری شما غیرفعال شده است.');
-    setState(() => _isLoading = false);
-    return;
-  }
-  // ادامه کد...          final String deviceId = await _getDeviceId();
+        if (foundUserId != null && rawUserData != null) {
+          final Map<String, dynamic> currentUserData = Map<String, dynamic>.from(rawUserData);
+
+          if (!_isTruthy(currentUserData['active'])) {
+            _showError('حساب کاربری شما غیرفعال شده است.');
+            setState(() => _isLoading = false);
+            return;
+          }
+
+          final String deviceId = await _getDeviceId();
           final int maxDevices = int.tryParse(currentUserData['max_devices']?.toString() ?? '1') ?? 1;
 
           Map<String, dynamic> activeSessions = {};
@@ -201,13 +202,13 @@ if (foundUserId != null && rawUserData != null) {
           );
 
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('user_id', foundUserId!);
+          await prefs.setString('user_id', foundUserId);
           await prefs.setString('device_id', deviceId);
 
           if (mounted) {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (_) => ServerListScreen(userId: foundUserId!)),
+              MaterialPageRoute(builder: (_) => ServerListScreen(userId: foundUserId)),
             );
           }
         } else {
