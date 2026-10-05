@@ -138,7 +138,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (res.statusCode == 200 && res.body != 'null') {
         final dynamic decodedData = json.decode(res.body);
         String? foundUserId;
-        Map<String, dynamic>? userData;
+        Map<String, dynamic>? rawUserData;
 
         if (decodedData is List) {
           for (int i = 0; i < decodedData.length; i++) {
@@ -147,7 +147,7 @@ class _LoginScreenState extends State<LoginScreen> {
               if (item['username']?.toString().trim() == username &&
                   item['password']?.toString().trim() == password) {
                 foundUserId = item['id']?.toString() ?? i.toString();
-                userData = Map<String, dynamic>.from(item);
+                rawUserData = Map<String, dynamic>.from(item);
                 break;
               }
             }
@@ -158,14 +158,14 @@ class _LoginScreenState extends State<LoginScreen> {
               if (value['username']?.toString().trim() == username &&
                   value['password']?.toString().trim() == password) {
                 foundUserId = key.toString();
-                userData = Map<String, dynamic>.from(value);
+                rawUserData = Map<String, dynamic>.from(value);
               }
             }
           });
         }
 
-        if (foundUserId != null && userData != null) {
-          final currentUserData = userData; // ارجاع محلی برای بررسی ایمن Null-Safety
+        if (foundUserId != null && rawUserData != null) {
+          final Map<String, dynamic> currentUserData = rawUserData;
 
           if (!_isTruthy(currentUserData['active'])) {
             _showError('حساب کاربری شما غیرفعال شده است.');
@@ -202,7 +202,7 @@ class _LoginScreenState extends State<LoginScreen> {
           );
 
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('user_id', foundUserId);
+          await prefs.setString('user_id', foundUserId!);
           await prefs.setString('device_id', deviceId);
 
           if (mounted) {
