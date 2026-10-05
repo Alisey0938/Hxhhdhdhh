@@ -92,7 +92,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  // استخراج شناسه یکتا و نام دستگاه جهت هماهنگی با پنل مدیریت
+  static const String apiBase = "https://socialmedia-ad.ir/api.php";
+
   Future<String> _getDeviceId() async {
     try {
       DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
@@ -122,7 +123,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final res = await http.get(Uri.parse("https://pane-dcc9a-default-rtdb.firebaseio.com/users.json"));
+      final res = await http.get(Uri.parse("$apiBase?action=get_users"));
       if (res.statusCode == 200 && res.body != 'null') {
         final Map<String, dynamic> users = json.decode(res.body);
         String? foundUserId;
@@ -144,29 +145,30 @@ class _LoginScreenState extends State<LoginScreen> {
 
           final String deviceId = await _getDeviceId();
           final int maxDevices = (userData!['max_devices'] ?? 1);
-          
+
           Map<String, dynamic> activeSessions = {};
           if (userData!['active_sessions'] != null && userData!['active_sessions'] is Map) {
             activeSessions = Map<String, dynamic>.from(userData!['active_sessions']);
           }
 
-          // بررسی محدودیت تعداد دستگاه آنلاین
           if (!activeSessions.containsKey(deviceId) && activeSessions.length >= maxDevices) {
             _showError('محدودیت تعداد کاربر آنلاین! این اکانت در دستگاه دیگری فعال است.');
             setState(() => _isLoading = false);
             return;
           }
 
-          // ثبت مشخصات ورود دستگاه در فایربیس
           final nowIso = DateTime.now().toIso8601String();
-          final sessionData = {
+          activeSessions[deviceId] = {
             "login_at": activeSessions[deviceId]?['login_at'] ?? nowIso,
             "last_seen": nowIso,
           };
 
-          await http.put(
-            Uri.parse("https://pane-dcc9a-default-rtdb.firebaseio.com/users/$foundUserId/active_sessions/$deviceId.json"),
-            body: json.encode(sessionData),
+          userData!['active_sessions'] = activeSessions;
+
+          await http.post(
+            Uri.parse("$apiBase?action=save_user"),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode(userData),
           );
 
           final prefs = await SharedPreferences.getInstance();
@@ -261,7 +263,7 @@ class ServerListScreen extends StatefulWidget {
 }
 
 class _ServerListScreenState extends State<ServerListScreen> with WidgetsBindingObserver {
-  final String firebaseUrl = "https://pane-dcc9a-default-rtdb.firebaseio.com/";
+  static const String apiBase = "https://socialmedia-ad.ir/api.php";
 
   late FlutterV2ray flutterV2ray;
   List<dynamic> _configs = [];
@@ -370,7 +372,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   Future<void> _fetchAnnouncement() async {
     try {
-      final res = await http.get(Uri.parse("${firebaseUrl}announcement.json"));
+      final res = await http.get(Uri.parse("$apiBase?action=get_announcement"));
       if (res.statusCode == 200 && res.body != 'null') {
         final data = json.decode(res.body);
         if (mounted) setState(() => _announcementData = data);
@@ -380,7 +382,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   Future<void> _fetchUserDataAndCheck() async {
     try {
-      final res = await http.get(Uri.parse("${firebaseUrl}users/${widget.userId}.json"));
+      final res = await http.get(Uri.parse("$apiBase?action=get_user&id=${widget.userId}"));
       if (res.statusCode == 200 && res.body != 'null') {
         final data = json.decode(res.body);
 
@@ -394,22 +396,25 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
           return;
         }
 
-        // بررسی اخراج دستگاه از پنل مدیریت
         if (_deviceId != null) {
           Map<String, dynamic> activeSessions = {};
           if (data['active_sessions'] != null && data['active_sessions'] is Map) {
             activeSessions = Map<String, dynamic>.from(data['active_sessions']);
           }
 
-          // اگر دستگاه از لیست active_sessions حذف شده باشد، کاربر اخراج می‌شود
           if (!activeSessions.containsKey(_deviceId)) {
             _logoutUser('دستگاه شما توسط ادمین از حساب خارج شد.');
             return;
           } else {
-            // بروزرسانی زمان آخرین اتصال
-            http.patch(
-              Uri.parse("${firebaseUrl}users/${widget.userId}/active_sessions/$_deviceId.json"),
-              body: json.encode({"last_seen": DateTime.now().toIso8601String()}),
+            activeSessions[_deviceId] = {
+              ...activeSessions[_deviceId],
+              "last_seen": DateTime.now().toIso8601String(),
+            };
+            data['active_sessions'] = activeSessions;
+            http.post(
+              Uri.parse("$apiBase?action=save_user"),
+              headers: {'Content-Type': 'application/json'},
+              body: json.encode(data),
             );
           }
         }
@@ -477,9 +482,10 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       if (mounted) setState(() {});
 
       try {
-        await http.patch(
-          Uri.parse("${firebaseUrl}users/${widget.userId}.json"),
-          body: json.encode({"used_bytes": _accumulatedUsedBytes}),
+        await http.post(
+          Uri.parse("$apiBase?action=save_user"),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode(_userData),
         );
       } catch (_) {}
 
@@ -490,18 +496,21 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     }
   }
 
-  // متد کامل خروج کاربر و حذف نشست از فایربیس
   void _logoutUser(String reason) async {
     _userCheckTimer?.cancel();
     try {
       await flutterV2ray.stopV2Ray();
     } catch (_) {}
 
-    // پاک کردن این دستگاه از گره active_sessions فایربیس
-    if (_deviceId != null) {
+    if (_deviceId != null && _userData != null) {
       try {
-        await http.delete(
-          Uri.parse("${firebaseUrl}users/${widget.userId}/active_sessions/$_deviceId.json"),
+        Map<String, dynamic> activeSessions = Map<String, dynamic>.from(_userData!['active_sessions'] ?? {});
+        activeSessions.remove(_deviceId);
+        _userData!['active_sessions'] = activeSessions;
+        await http.post(
+          Uri.parse("$apiBase?action=save_user"),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode(_userData),
         );
       } catch (_) {}
     }
@@ -523,14 +532,12 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   Future<void> _fetchConfigs() async {
     setState(() => _isLoading = true);
     try {
-      final response = await http.get(Uri.parse("${firebaseUrl}configs.json"));
+      final response = await http.get(Uri.parse("$apiBase?action=get_configs"));
       if (response.statusCode == 200 && response.body != 'null') {
         final data = json.decode(response.body);
         List<dynamic> loadedConfigs = [];
 
-        if (data is List) {
-          loadedConfigs = data.where((item) => item != null && item['active'] == true).toList();
-        } else if (data is Map) {
+        if (data is Map) {
           data.forEach((key, value) {
             if (value != null && value['active'] == true) {
               loadedConfigs.add(value);
