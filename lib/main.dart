@@ -1,4 +1,4 @@
-import 'dart0:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -165,18 +165,20 @@ class _LoginScreenState extends State<LoginScreen> {
         }
 
         if (foundUserId != null && userData != null) {
-          if (!_isTruthy(userData['active'])) {
+          final currentUserData = userData; // ارجاع محلی برای بررسی ایمن Null-Safety
+
+          if (!_isTruthy(currentUserData['active'])) {
             _showError('حساب کاربری شما غیرفعال شده است.');
             setState(() => _isLoading = false);
             return;
           }
 
           final String deviceId = await _getDeviceId();
-          final int maxDevices = int.tryParse(userData['max_devices']?.toString() ?? '1') ?? 1;
+          final int maxDevices = int.tryParse(currentUserData['max_devices']?.toString() ?? '1') ?? 1;
 
           Map<String, dynamic> activeSessions = {};
-          if (userData['active_sessions'] != null && userData['active_sessions'] is Map) {
-            activeSessions = Map<String, dynamic>.from(userData['active_sessions']);
+          if (currentUserData['active_sessions'] != null && currentUserData['active_sessions'] is Map) {
+            activeSessions = Map<String, dynamic>.from(currentUserData['active_sessions']);
           }
 
           if (!activeSessions.containsKey(deviceId) && activeSessions.length >= maxDevices) {
@@ -191,12 +193,12 @@ class _LoginScreenState extends State<LoginScreen> {
             "last_seen": nowIso,
           };
 
-          userData['active_sessions'] = activeSessions;
+          currentUserData['active_sessions'] = activeSessions;
 
           await http.post(
             Uri.parse("$apiBase?action=save_user"),
             headers: {'Content-Type': 'application/json'},
-            body: json.encode(userData),
+            body: json.encode(currentUserData),
           );
 
           final prefs = await SharedPreferences.getInstance();
@@ -474,7 +476,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
               return;
             } else {
               if (diff.inDays > 0) {
-                _remainingTimeText = '${diff.inDays} روز باقی‌مانده';
+                _remainingTimeText = '${diff.inDays} روز باقی‌‌مانده';
               } else if (diff.inHours > 0) {
                 _remainingTimeText = '${diff.inHours} ساعت باقی‌مانده';
               } else {
