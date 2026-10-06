@@ -36,11 +36,14 @@ jobs:
             sed -i 's/targetSdk .*/targetSdk 35/g' $BUILD_GRADLE
             sed -i 's/compileSdkVersion .*/compileSdkVersion 35/g' $BUILD_GRADLE
             sed -i 's/targetSdkVersion .*/targetSdkVersion 35/g' $BUILD_GRADLE
+            
+            # افزودن صریح نسخه ابزار ساخت برای رفع خطای aapt2
+            sed -i '/defaultConfig {/a \    buildToolsVersion "35.0.0"' $BUILD_GRADLE
           fi
 
-      - name: Install Android SDK 35 Build-Tools
+      - name: Install Android SDK Build-Tools 35
         run: |
-          echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "build-tools;35.0.0" "platforms;android-35" || true
+          echo "y" | sudo ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "build-tools;35.0.0" || true
 
       - name: Install Dependencies
         run: flutter pub get
