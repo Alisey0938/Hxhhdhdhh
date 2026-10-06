@@ -25,22 +25,35 @@ jobs:
           flutter-version: '3.22.3'
           channel: 'stable'
 
-      - name: Install Android SDK Platform and Build-Tools 35
+      - name: Install Android SDK 35 and Build-Tools
         run: |
           echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Ensure Android Platform Exists & Patch SDK
+      - name: Ensure Android Platform Exists & Patch build.gradle
         run: |
           if [ ! -d "android" ]; then
             flutter create --platforms=android --project-name xray_ultra .
           fi
-          BUILD_GRADLE="android/app/build.gradle"
-          if [ -f "$BUILD_GRADLE" ]; then
-            sed -i 's/compileSdk .*/compileSdk 35/g' $BUILD_GRADLE
-            sed -i 's/targetSdk .*/targetSdk 35/g' $BUILD_GRADLE
-            sed -i 's/compileSdkVersion .*/compileSdkVersion 35/g' $BUILD_GRADLE
-            sed -i 's/targetSdkVersion .*/targetSdkVersion 35/g' $BUILD_GRADLE
-          fi
+          python3 -c '
+          path = "android/app/build.gradle"
+          with open(path, "r") as f:
+              content = f.read()
+          
+          import re
+          content = re.sub(r"compileSdkVersion\s+.*", "compileSdkVersion 35", content)
+          content = re.sub(r"targetSdkVersion\s+.*", "targetSdkVersion 35", content)
+          content = re.sub(r"compileSdk\s+.*", "compileSdk 35", content)
+          content = re.sub(r"targetSdk\s+.*", "targetSdk 35", content)
+
+          if "buildToolsVersion" in content:
+              content = re.sub(r"buildToolsVersion\s+\"[^\"]+\"", "buildToolsVersion \"35.0.0\"", content)
+          else:
+              content = content.replace("defaultConfig {", "defaultConfig {\n        buildToolsVersion \"35.0.0\"")
+
+          with open(path, "w") as f:
+              f.write(content)
+          print("Successfully patched build.gradle to SDK 35")
+          '
 
       - name: Install Dependencies
         run: flutter pub get
