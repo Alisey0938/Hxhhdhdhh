@@ -157,7 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
             if (value != null && value is Map) {
               if (value['username']?.toString().trim() == username &&
                   value['password']?.toString().trim() == password) {
-                foundUserId = value['id']?.toString() ?? key.toString();
+                foundUserId = key.toString();
                 rawUserData = Map<String, dynamic>.from(value);
               }
             }
@@ -170,7 +170,8 @@ class _LoginScreenState extends State<LoginScreen> {
         if (finalUserId != null && finalUserData != null) {
           final Map<String, dynamic> currentUserData = Map<String, dynamic>.from(finalUserData);
 
-          if (!_isTruthy(currentUserData['active'])) {
+          // اصلاح بررسی وضعیت فعال بودن جهت جلوگیری از خطای نادرست در صورت نبودن یا نال بودن مقدار
+          if (currentUserData['active'] != null && !_isTruthy(currentUserData['active'])) {
             _showError('حساب کاربری شما غیرفعال شده است.');
             setState(() => _isLoading = false);
             return;
@@ -180,15 +181,8 @@ class _LoginScreenState extends State<LoginScreen> {
           final int maxDevices = int.tryParse(currentUserData['max_devices']?.toString() ?? '1') ?? 1;
 
           Map<String, dynamic> activeSessions = {};
-          if (currentUserData['active_sessions'] != null) {
-            if (currentUserData['active_sessions'] is Map) {
-              activeSessions = Map<String, dynamic>.from(currentUserData['active_sessions']);
-            } else if (currentUserData['active_sessions'] is String && currentUserData['active_sessions'].toString().isNotEmpty) {
-              try {
-                final decoded = json.decode(currentUserData['active_sessions']);
-                if (decoded is Map) activeSessions = Map<String, dynamic>.from(decoded);
-              } catch (_) {}
-            }
+          if (currentUserData['active_sessions'] != null && currentUserData['active_sessions'] is Map) {
+            activeSessions = Map<String, dynamic>.from(currentUserData['active_sessions']);
           }
 
           if (!activeSessions.containsKey(deviceId) && activeSessions.length >= maxDevices) {
@@ -433,38 +427,17 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   Future<void> _fetchUserDataAndCheck() async {
     try {
-      final res = await http.get(Uri.parse("$apiBase?action=get_users"));
+      final res = await http.get(Uri.parse("$apiBase?action=get_user&id=${widget.userId}"));
       if (res.statusCode == 200 && res.body != 'null') {
-        final dynamic decoded = json.decode(res.body);
-        Map<String, dynamic>? rawUser;
+        final data = json.decode(res.body);
 
-        if (decoded is Map) {
-          if (decoded.containsKey(widget.userId)) {
-            rawUser = Map<String, dynamic>.from(decoded[widget.userId]);
-          } else {
-            decoded.forEach((key, value) {
-              if (value is Map && (value['id']?.toString() == widget.userId)) {
-                rawUser = Map<String, dynamic>.from(value);
-              }
-            });
-          }
-        } else if (decoded is List) {
-          for (var item in decoded) {
-            if (item is Map && item['id']?.toString() == widget.userId) {
-              rawUser = Map<String, dynamic>.from(item);
-              break;
-            }
-          }
-        }
-
-        if (rawUser == null) {
+        if (data == null) {
           _logoutUser('حساب کاربری شما حذف شده است.');
           return;
         }
 
-        final Map<String, dynamic> data = rawUser;
-
-        if (!_isTruthy(data['active'])) {
+        // اصلاح بررسی وضعیت فعال بودن کاربر در چک‌های دوره‌ای
+        if (data['active'] != null && !_isTruthy(data['active'])) {
           _logoutUser('حساب کاربری شما غیرفعال شده است.');
           return;
         }
@@ -472,15 +445,8 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         final currentDeviceId = _deviceId;
         if (currentDeviceId != null) {
           Map<String, dynamic> activeSessions = {};
-          if (data['active_sessions'] != null) {
-            if (data['active_sessions'] is Map) {
-              activeSessions = Map<String, dynamic>.from(data['active_sessions']);
-            } else if (data['active_sessions'] is String && data['active_sessions'].toString().isNotEmpty) {
-              try {
-                final decSession = json.decode(data['active_sessions']);
-                if (decSession is Map) activeSessions = Map<String, dynamic>.from(decSession);
-              } catch (_) {}
-            }
+          if (data['active_sessions'] != null && data['active_sessions'] is Map) {
+            activeSessions = Map<String, dynamic>.from(data['active_sessions']);
           }
 
           if (!activeSessions.containsKey(currentDeviceId)) {
@@ -501,7 +467,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
           }
         }
 
-        _userData = data;
+        _userData = Map<String, dynamic>.from(data);
         _accumulatedUsedBytes = int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
 
         if (data['expire_at'] != null && data['expire_at'].toString().isNotEmpty) {
@@ -591,10 +557,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     final currentDeviceId = _deviceId;
     if (currentDeviceId != null && _userData != null) {
       try {
-        Map<String, dynamic> activeSessions = {};
-        if (_userData!['active_sessions'] is Map) {
-          activeSessions = Map<String, dynamic>.from(_userData!['active_sessions']);
-        }
+        Map<String, dynamic> activeSessions = Map<String, dynamic>.from(_userData!['active_sessions'] ?? {});
         activeSessions.remove(currentDeviceId);
         _userData!['active_sessions'] = activeSessions;
         await http.post(
@@ -870,7 +833,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
                 builder: (ctx) => AlertDialog(
                   backgroundColor: const Color(0xFF222536),
                   title: const Text('خروج از حساب'),
-                  content: const Text('آیا می‌‌خواهید از حساب کاربری خود خارج شوید؟'),
+                  content: const Text('آیا می‌خواهید از حساب کاربری خود خارج شوید؟'),
                   actions: [
                     TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('انصراف')),
                     TextButton(
