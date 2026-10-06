@@ -32,12 +32,15 @@ jobs:
           fi
           BUILD_GRADLE="android/app/build.gradle"
           if [ -f "$BUILD_GRADLE" ]; then
-            # جایگزینی امن خطوط مربوط به نسخه SDK اندروید
             sed -i 's/compileSdk .*/compileSdk 35/g' $BUILD_GRADLE
             sed -i 's/targetSdk .*/targetSdk 35/g' $BUILD_GRADLE
             sed -i 's/compileSdkVersion .*/compileSdkVersion 35/g' $BUILD_GRADLE
             sed -i 's/targetSdkVersion .*/targetSdkVersion 35/g' $BUILD_GRADLE
           fi
+
+      - name: Install Android SDK 35 Build-Tools
+        run: |
+          echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "build-tools;35.0.0" "platforms;android-35" || true
 
       - name: Install Dependencies
         run: flutter pub get
