@@ -436,31 +436,33 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       final res = await http.get(Uri.parse("$apiBase?action=get_users"));
       if (res.statusCode == 200 && res.body != 'null') {
         final dynamic decoded = json.decode(res.body);
-        Map<String, dynamic>? data;
+        Map<String, dynamic>? rawUser;
 
         if (decoded is Map) {
           if (decoded.containsKey(widget.userId)) {
-            data = Map<String, dynamic>.from(decoded[widget.userId]);
+            rawUser = Map<String, dynamic>.from(decoded[widget.userId]);
           } else {
             decoded.forEach((key, value) {
               if (value is Map && (value['id']?.toString() == widget.userId)) {
-                data = Map<String, dynamic>.from(value);
+                rawUser = Map<String, dynamic>.from(value);
               }
             });
           }
         } else if (decoded is List) {
           for (var item in decoded) {
             if (item is Map && item['id']?.toString() == widget.userId) {
-              data = Map<String, dynamic>.from(item);
+              rawUser = Map<String, dynamic>.from(item);
               break;
             }
           }
         }
 
-        if (data == null) {
+        if (rawUser == null) {
           _logoutUser('حساب کاربری شما حذف شده است.');
           return;
         }
+
+        final Map<String, dynamic> data = rawUser;
 
         if (!_isTruthy(data['active'])) {
           _logoutUser('حساب کاربری شما غیرفعال شده است.');
@@ -499,7 +501,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
           }
         }
 
-        _userData = Map<String, dynamic>.from(data);
+        _userData = data;
         _accumulatedUsedBytes = int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
 
         if (data['expire_at'] != null && data['expire_at'].toString().isNotEmpty) {
@@ -868,7 +870,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
                 builder: (ctx) => AlertDialog(
                   backgroundColor: const Color(0xFF222536),
                   title: const Text('خروج از حساب'),
-                  content: const Text('آیا می‌خواهید از حساب کاربری خود خارج شوید؟'),
+                  content: const Text('آیا می‌‌خواهید از حساب کاربری خود خارج شوید؟'),
                   actions: [
                     TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('انصراف')),
                     TextButton(
