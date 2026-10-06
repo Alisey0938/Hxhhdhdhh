@@ -30,13 +30,13 @@ jobs:
           if [ ! -d "android" ]; then
             flutter create --platforms=android --project-name xray_ultra .
           fi
-          # تنظیم نسخه SDK روی 35 به صورت خودکار برای رفع خطای بیلد
           BUILD_GRADLE="android/app/build.gradle"
           if [ -f "$BUILD_GRADLE" ]; then
-            sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 35/g' $BUILD_GRADLE
-            sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 35/g' $BUILD_GRADLE
-            sed -i 's/compileSdk [0-9]*/compileSdk 35/g' $BUILD_GRADLE
-            sed -i 's/targetSdk [0-9]*/targetSdk 35/g' $BUILD_GRADLE
+            # جایگزینی امن خطوط مربوط به نسخه SDK اندروید
+            sed -i 's/compileSdk .*/compileSdk 35/g' $BUILD_GRADLE
+            sed -i 's/targetSdk .*/targetSdk 35/g' $BUILD_GRADLE
+            sed -i 's/compileSdkVersion .*/compileSdkVersion 35/g' $BUILD_GRADLE
+            sed -i 's/targetSdkVersion .*/targetSdkVersion 35/g' $BUILD_GRADLE
           fi
 
       - name: Install Dependencies
