@@ -620,8 +620,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   String _cleanUrl(String rawUrl) => rawUrl.trim();
 
-  /// سیستم اصلاح‌شده و دقیق تست پینگ تمام کانفیگ‌ها به صورت ترتیبی (Sequential)
-  /// برای جلوگیری از تداخل و برگشتن عدد -1 به دلیل درخواست‌های همزمان سنگین روی هسته Xray
   Future<void> _testAllPings() async {
     if (_isTestingAllPings || _configs.isEmpty) return;
 
@@ -638,7 +636,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       });
     }
 
-    // تست تک‌تک کانفیگ‌ها به صورت ترتیبی جهت حصول اطمینان از صحت سنجش Real Delay
     for (final item in _configs) {
       if (!mounted) break;
       await _testSinglePing(item);
@@ -664,7 +661,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     });
   }
 
-  /// اندازه گیری Real Delay با استفاده از متد قدرتمند هسته Xray و مکانیزم فال‌بک (Fallback)
   Future<int> _measureRealDelay(String config, String url) async {
     try {
       final result = await flutterV2ray
@@ -704,13 +700,11 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
       int delay = -1;
 
-      // تست اول با آدرس گوگل (generate_204)
       delay = await _measureRealDelay(
         xrayConfig,
         'https://www.google.com/generate_204',
       );
 
-      // اگر موفق نبود، تست دوم با کلادفلر به عنوان پناهگاه جایگزین
       if (delay <= 0) {
         delay = await _measureRealDelay(
           xrayConfig,
@@ -1058,12 +1052,12 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             ),
             InkWell(
               onTap: _isTestingAllPings ? null : _testAllPings,
-              child: Column(
-                mainAxisAlignment: MainDataFrame ifNeeded => MainAxisAlignment.center,
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.bolt, color: _isTestingAllPings ? Colors.amber : Colors.white54, size: 20),
-                  const SizedBox(height: 2),
-                  Text(_isTestingAllPings ? 'Testing...' : 'Test', style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                  Icon(Icons.bolt, color: Colors.white54, size: 20),
+                  SizedBox(height: 2),
+                  Text('Test', style: TextStyle(color: Colors.white54, fontSize: 10)),
                 ],
               ),
             ),
