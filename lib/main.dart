@@ -620,8 +620,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   String _cleanUrl(String rawUrl) => rawUrl.trim();
 
-  /// تست پینگ پرسرعت به صورت دسته‌ای (Batched Concurrency)
-  /// در اینجا ۳ کانفیگ همزمان تست می‌شوند تا هم سرعت بالا برود و هم هسته Xray دچار خطا و -1 نشود.
+  /// پینگ‌گیری ترتیبی بهینه شده با نمایش لحظه‌ای (Live UI Update)
   Future<void> _testAllPings() async {
     if (_isTestingAllPings || _configs.isEmpty) return;
 
@@ -638,13 +637,10 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       });
     }
 
-    const int batchSize = 3;
-    for (int i = 0; i < _configs.length; i += batchSize) {
+    // تست تک‌تک اما با تایم‌اوت کوتاه و به‌روزرسانی سریع صفحه برای جلوگیری از خطای -1 و افزایش سرعت احساسی
+    for (final item in _configs) {
       if (!mounted) break;
-      final end = (i + batchSize < _configs.length) ? i + batchSize : _configs.length;
-      final batch = _configs.sublist(i, end);
-
-      await Future.wait(batch.map((item) => _testSinglePing(item)));
+      await _testSinglePing(item);
     }
 
     if (!mounted) return;
@@ -667,24 +663,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     });
   }
 
-  Future<int> _measureRealDelay(String config, String url) async {
-    try {
-      final result = await flutterV2ray
-          .getServerDelay(
-            config: config,
-            url: url,
-          )
-          .timeout(
-            const Duration(seconds: 8),
-            onTimeout: () => -1,
-          );
-
-      return result > 0 ? result : -1;
-    } catch (_) {
-      return -1;
-    }
-  }
-
   Future<void> _testSinglePing(Map<String, dynamic> item) async {
     final String rawUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name']?.toString() ?? '';
@@ -705,22 +683,23 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       final String xrayConfig = parser.getFullConfiguration();
 
       int delay = -1;
-
-      delay = await _measureRealDelay(
-        xrayConfig,
-        'https://www.google.com/generate_204',
-      );
-
-      if (delay <= 0) {
-        delay = await _measureRealDelay(
-          xrayConfig,
-          'https://cp.cloudflare.com/generate_204',
-        );
+      try {
+        delay = await flutterV2ray
+            .getServerDelay(
+              config: xrayConfig,
+              url: 'https://www.google.com/generate_204',
+            )
+            .timeout(
+              const Duration(seconds: 3), // تایم‌اوت کوتاه برای سرعت بیشتر
+              onTimeout: () => -1,
+            );
+      } catch (_) {
+        delay = -1;
       }
 
       if (mounted) {
         setState(() {
-          _pings[configId] = delay;
+          _pings[configId] = delay > 0 ? delay : -1;
           _pingLoading[configId] = false;
         });
       }
