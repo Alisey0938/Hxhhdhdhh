@@ -170,8 +170,9 @@ class _LoginScreenState extends State<LoginScreen> {
         if (finalUserId != null && finalUserData != null) {
           final Map<String, dynamic> currentUserData = Map<String, dynamic>.from(finalUserData);
 
-          if (currentUserData['active'] != null && !_isTruthy(currentUserData['active'])) {
-            _showError('حساب کاربری شما غیرفعال شده است.');
+          // بررسی فعال بودن حساب کاربری هنگام لاگین
+          if (!_isTruthy(currentUserData['active'])) {
+            _showError('حساب کاربری شما غیرفعال شده است. لطفاً با ادمین تماس بگیرید.');
             setState(() => _isLoading = false);
             return;
           }
@@ -363,7 +364,8 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     }
 
     _fetchUserDataAndCheck();
-    _userCheckTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+    // بررسی وضعیت کاربر و دستگاه هر ۲ ثانیه برای واکنش سریع ادمین
+    _userCheckTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       _fetchUserDataAndCheck();
       _fetchAnnouncement();
     });
@@ -428,14 +430,13 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     try {
       final res = await http.get(Uri.parse("$apiBase?action=get_user&id=${widget.userId}"));
       if (res.statusCode == 200 && res.body != 'null') {
-        final data = json.decode(res.body);
+        final dynamic data = json.decode(res.body);
 
-        if (data == null || data['status'] == 'online') {
-          return;
-        }
+        if (data == null || data is! Map) return;
 
-        if (data['active'] != null && !_isTruthy(data['active'])) {
-          _logoutUser('حساب کاربری شما غیرفعال شده است.');
+        // ۱. بررسی فوری غیرفعال شدن حساب کاربری توسط ادمین
+        if (!_isTruthy(data['active'])) {
+          _logoutUser('حساب کاربری شما توسط ادمین غیرفعال شده است.');
           return;
         }
 
@@ -446,6 +447,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             activeSessions = Map<String, dynamic>.from(data['active_sessions']);
           }
 
+          // ۲. بررسی اخراج دستگاه یا پاک شدن از جلسات فعال توسط ادمین
           if (!activeSessions.containsKey(currentDeviceId)) {
             _logoutUser('دستگاه شما توسط ادمین از حساب خارج شد.');
             return;
@@ -502,6 +504,9 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         }
 
         if (mounted) setState(() {});
+      } else {
+        // اگر کاربر از دیتابیس کلاً حذف شده بود
+        _logoutUser('حساب کاربری شما یافت نشد.');
       }
     } catch (_) {}
   }
