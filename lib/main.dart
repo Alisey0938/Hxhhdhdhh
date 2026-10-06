@@ -170,7 +170,6 @@ class _LoginScreenState extends State<LoginScreen> {
         if (finalUserId != null && finalUserData != null) {
           final Map<String, dynamic> currentUserData = Map<String, dynamic>.from(finalUserData);
 
-          // اصلاح بررسی وضعیت فعال بودن جهت جلوگیری از خطای نادرست در صورت نبودن یا نال بودن مقدار
           if (currentUserData['active'] != null && !_isTruthy(currentUserData['active'])) {
             _showError('حساب کاربری شما غیرفعال شده است.');
             setState(() => _isLoading = false);
@@ -431,12 +430,10 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       if (res.statusCode == 200 && res.body != 'null') {
         final data = json.decode(res.body);
 
-        if (data == null) {
-          _logoutUser('حساب کاربری شما حذف شده است.');
+        if (data == null || data['status'] == 'online') {
           return;
         }
 
-        // اصلاح بررسی وضعیت فعال بودن کاربر در چک‌های دوره‌ای
         if (data['active'] != null && !_isTruthy(data['active'])) {
           _logoutUser('حساب کاربری شما غیرفعال شده است.');
           return;
