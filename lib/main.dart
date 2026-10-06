@@ -316,6 +316,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   int _lastSessionDownload = 0;
   int _accumulatedUsedBytes = 0;
   String _remainingTimeText = '...';
+  String _coreVersion = '...'; // نسخه هسته ایکسری به‌روزرسانی شده
 
   Timer? _userCheckTimer;
   String? _deviceId;
@@ -412,6 +413,16 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     );
 
     await flutterV2ray.initializeV2Ray();
+    
+    // دریافت و به‌روزرسانی نسخه هسته ایکسری
+    try {
+      String version = await flutterV2ray.getCoreVersion();
+      if (mounted) {
+        setState(() {
+          _coreVersion = version;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _fetchAnnouncement() async {
@@ -620,7 +631,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   String _cleanUrl(String rawUrl) => rawUrl.trim();
 
-  /// پینگ‌گیری فوق‌العاده سریع و بدون محدودیت تعداد با TCP Socket Ping
   Future<void> _testAllPings() async {
     if (_isTestingAllPings || _configs.isEmpty) return;
 
@@ -637,7 +647,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       });
     }
 
-    // تست همزمان یا ترتیبی بهینه شده برای همه کانفیگ‌ها بدون خطای -1
     for (final item in _configs) {
       if (!mounted) break;
       await _testSingleTcpPing(item);
@@ -857,7 +866,12 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Xray Ultra', style: TextStyle(fontSize: 18, color: Colors.white70)),
+        title: Column(
+          children: [
+            const Text('Xray Ultra', style: TextStyle(fontSize: 18, color: Colors.white70)),
+            Text('Core: $_coreVersion', style: const TextStyle(fontSize: 10, color: Colors.white38)),
+          ],
+        ),
         centerTitle: true,
         actions: [
           IconButton(
@@ -868,7 +882,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
                 builder: (ctx) => AlertDialog(
                   backgroundColor: const Color(0xFF222536),
                   title: const Text('خروج از حساب'),
-                  content: const Text('آیا می‌خواهید از حساب کاربری خود خارج شوید؟'),
+                  content: const Text('آیا می‌‌خواهید از حساب کاربری خود خارج شوید؟'),
                   actions: [
                     TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('انصراف')),
                     TextButton(
