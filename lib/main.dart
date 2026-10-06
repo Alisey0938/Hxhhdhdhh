@@ -620,6 +620,8 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   String _cleanUrl(String rawUrl) => rawUrl.trim();
 
+  /// سیستم اصلاح‌شده و دقیق تست پینگ تمام کانفیگ‌ها به صورت ترتیبی (Sequential)
+  /// برای جلوگیری از تداخل و برگشتن عدد -1 به دلیل درخواست‌های همزمان سنگین روی هسته Xray
   Future<void> _testAllPings() async {
     if (_isTestingAllPings || _configs.isEmpty) return;
 
@@ -636,23 +638,11 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       });
     }
 
-    // V2RayNG تست Real Delay را خارج از UI و به‌صورت موازی انجام می‌دهد.
-    // برای جلوگیری از فشار بیش از حد روی Android/Xray، تعداد همزمانی را محدود می‌کنیم.
-    const int concurrency = 4;
-    final pending = List<Map<String, dynamic>>.from(_configs);
-
-    Future<void> worker() async {
-      while (pending.isNotEmpty) {
-        final item = pending.removeLast();
-        await _testSinglePing(item);
-      }
+    // تست تک‌تک کانفیگ‌ها به صورت ترتیبی جهت حصول اطمینان از صحت سنجش Real Delay
+    for (final item in _configs) {
+      if (!mounted) break;
+      await _testSinglePing(item);
     }
-
-    final workers = <Future<void>>[
-      for (int i = 0; i < concurrency && i < _configs.length; i++) worker(),
-    ];
-
-    await Future.wait(workers);
 
     if (!mounted) return;
 
@@ -674,13 +664,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     });
   }
 
-  /// Real Delay:
-  /// کانفیگ به Xray Core داده می‌شود و درخواست HTTP(S) از داخل outbound
-  /// همان کانفیگ عبور می‌کند. بنابراین این عدد TCP ping ساده‌ی IP:PORT نیست.
-  ///
-  /// flutter_v2ray 1.0.10 روی Android از Xray Core 25.3.6 استفاده می‌کند.
-  /// خود native delay tester نیز چند تلاش انجام می‌دهد؛ بنابراین در Dart
-  /// نباید با timeout پنج‌ثانیه‌ای آن را قطع کنیم.
+  /// اندازه گیری Real Delay با استفاده از متد قدرتمند هسته Xray و مکانیزم فال‌بک (Fallback)
   Future<int> _measureRealDelay(String config, String url) async {
     try {
       final result = await flutterV2ray
@@ -689,7 +673,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             url: url,
           )
           .timeout(
-            const Duration(seconds: 13),
+            const Duration(seconds: 10),
             onTimeout: () => -1,
           );
 
@@ -701,8 +685,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   Future<void> _testSinglePing(Map<String, dynamic> item) async {
     final String rawUrl = (item['config'] ?? '').toString().trim();
-    final String configId =
-        item['id']?.toString() ?? item['name']?.toString() ?? '';
+    final String configId = item['id']?.toString() ?? item['name']?.toString() ?? '';
 
     if (rawUrl.isEmpty || configId.isEmpty) {
       if (mounted && configId.isNotEmpty) {
@@ -721,14 +704,13 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
       int delay = -1;
 
-      // اول URL استاندارد را تست می‌کنیم.
-      // HTTPS نسبت به HTTP برای سنجش مسیر واقعی قابل اتکاتر است.
+      // تست اول با آدرس گوگل (generate_204)
       delay = await _measureRealDelay(
         xrayConfig,
         'https://www.google.com/generate_204',
       );
 
-      // فقط در صورت شکست، endpoint جایگزین را امتحان می‌کنیم.
+      // اگر موفق نبود، تست دوم با کلادفلر به عنوان پناهگاه جایگزین
       if (delay <= 0) {
         delay = await _measureRealDelay(
           xrayConfig,
@@ -1077,7 +1059,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             InkWell(
               onTap: _isTestingAllPings ? null : _testAllPings,
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainDataFrame ifNeeded => MainAxisAlignment.center,
                 children: [
                   Icon(Icons.bolt, color: _isTestingAllPings ? Colors.amber : Colors.white54, size: 20),
                   const SizedBox(height: 2),
