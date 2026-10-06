@@ -364,7 +364,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     }
 
     _fetchUserDataAndCheck();
-    // بررسی وضعیت کاربر و دستگاه هر ۲ ثانیه برای واکنش سریع ادمین
     _userCheckTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       _fetchUserDataAndCheck();
       _fetchAnnouncement();
@@ -434,7 +433,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
         if (data == null || data is! Map) return;
 
-        // ۱. بررسی فوری غیرفعال شدن حساب کاربری توسط ادمین
+        // بررسی فوری غیرفعال شدن حساب کاربری توسط ادمین
         if (!_isTruthy(data['active'])) {
           _logoutUser('حساب کاربری شما توسط ادمین غیرفعال شده است.');
           return;
@@ -447,7 +446,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             activeSessions = Map<String, dynamic>.from(data['active_sessions']);
           }
 
-          // ۲. بررسی اخراج دستگاه یا پاک شدن از جلسات فعال توسط ادمین
           if (!activeSessions.containsKey(currentDeviceId)) {
             _logoutUser('دستگاه شما توسط ادمین از حساب خارج شد.');
             return;
@@ -505,7 +503,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
         if (mounted) setState(() {});
       } else {
-        // اگر کاربر از دیتابیس کلاً حذف شده بود
         _logoutUser('حساب کاربری شما یافت نشد.');
       }
     } catch (_) {}
