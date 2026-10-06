@@ -25,6 +25,10 @@ jobs:
           flutter-version: '3.22.3'
           channel: 'stable'
 
+      - name: Install Android SDK Platform and Build-Tools 35
+        run: |
+          echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
       - name: Ensure Android Platform Exists & Patch SDK
         run: |
           if [ ! -d "android" ]; then
@@ -36,14 +40,7 @@ jobs:
             sed -i 's/targetSdk .*/targetSdk 35/g' $BUILD_GRADLE
             sed -i 's/compileSdkVersion .*/compileSdkVersion 35/g' $BUILD_GRADLE
             sed -i 's/targetSdkVersion .*/targetSdkVersion 35/g' $BUILD_GRADLE
-            
-            # افزودن صریح نسخه ابزار ساخت برای رفع خطای aapt2
-            sed -i '/defaultConfig {/a \    buildToolsVersion "35.0.0"' $BUILD_GRADLE
           fi
-
-      - name: Install Android SDK Build-Tools 35
-        run: |
-          echo "y" | sudo ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "build-tools;35.0.0" || true
 
       - name: Install Dependencies
         run: flutter pub get
