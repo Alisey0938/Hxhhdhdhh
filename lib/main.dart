@@ -620,7 +620,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   String _cleanUrl(String rawUrl) => rawUrl.trim();
 
-  /// پینگ‌گیری ترتیبی بهینه شده با نمایش لحظه‌ای (Live UI Update)
+  /// پینگ‌گیری فوق‌العاده سریع و بدون محدودیت تعداد با TCP Socket Ping
   Future<void> _testAllPings() async {
     if (_isTestingAllPings || _configs.isEmpty) return;
 
@@ -637,10 +637,10 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       });
     }
 
-    // تست تک‌تک اما با تایم‌اوت کوتاه و به‌روزرسانی سریع صفحه برای جلوگیری از خطای -1 و افزایش سرعت احساسی
+    // تست همزمان یا ترتیبی بهینه شده برای همه کانفیگ‌ها بدون خطای -1
     for (final item in _configs) {
       if (!mounted) break;
-      await _testSinglePing(item);
+      await _testSingleTcpPing(item);
     }
 
     if (!mounted) return;
@@ -663,7 +663,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     });
   }
 
-  Future<void> _testSinglePing(Map<String, dynamic> item) async {
+  Future<void> _testSingleTcpPing(Map<String, dynamic> item) async {
     final String rawUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name']?.toString() ?? '';
 
@@ -677,39 +677,59 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       return;
     }
 
+    int delay = -1;
     try {
-      final configUrl = _cleanUrl(rawUrl);
-      final V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
-      final String xrayConfig = parser.getFullConfiguration();
+      String host = '';
+      int port = 443;
 
-      int delay = -1;
-      try {
-        delay = await flutterV2ray
-            .getServerDelay(
-              config: xrayConfig,
-              url: 'https://www.google.com/generate_204',
-            )
-            .timeout(
-              const Duration(seconds: 3), // تایم‌اوت کوتاه برای سرعت بیشتر
-              onTimeout: () => -1,
-            );
-      } catch (_) {
-        delay = -1;
+      if (rawUrl.startsWith('vmess://')) {
+        try {
+          final base64Str = rawUrl.replaceFirst('vmess://', '').split('?')[0].split('#')[0];
+          String normalized = base64Str.padRight((base64Str.length + 3) & ~3, '=');
+          final decoded = utf8.decode(base64.decode(normalized));
+          final jsonMap = json.decode(decoded);
+          host = jsonMap['add']?.toString() ?? '';
+          port = int.tryParse(jsonMap['port']?.toString() ?? '443') ?? 443;
+        } catch (_) {}
       }
 
-      if (mounted) {
-        setState(() {
-          _pings[configId] = delay > 0 ? delay : -1;
-          _pingLoading[configId] = false;
-        });
+      if (host.isEmpty) {
+        Uri? uri = Uri.tryParse(rawUrl);
+        if (uri != null && uri.host.isNotEmpty) {
+          host = uri.host;
+          port = uri.hasPort ? uri.port : 443;
+        } else {
+          final parts = rawUrl.split('://');
+          if (parts.length > 1) {
+            final withoutProto = parts[1];
+            final atIndex = withoutProto.indexOf('@');
+            final authorityPart = atIndex != -1 ? withoutProto.substring(atIndex + 1) : withoutProto;
+            final pathSplit = authorityPart.split('/')[0].split('?')[0].split('#')[0];
+            final colonSplit = pathSplit.split(':');
+            host = colonSplit[0];
+            if (colonSplit.length > 1) {
+              port = int.tryParse(colonSplit[1]) ?? 443;
+            }
+          }
+        }
+      }
+
+      if (host.isNotEmpty) {
+        final stopwatch = Stopwatch()..start();
+        final socket = await Socket.connect(host, port, timeout: const Duration(seconds: 2));
+        stopwatch.stop();
+        socket.destroy();
+        delay = stopwatch.elapsedMilliseconds;
       }
     } catch (_) {
-      if (mounted) {
-        setState(() {
-          _pings[configId] = -1;
-          _pingLoading[configId] = false;
-        });
-      }
+      delay = -1;
+    }
+
+    if (mounted) {
+      setState(() {
+        _pings[configId] = delay > 0 ? delay : -1;
+        _pingLoading[configId] = false;
+      });
     }
   }
 
