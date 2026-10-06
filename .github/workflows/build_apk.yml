@@ -25,10 +25,18 @@ jobs:
           flutter-version: '3.22.3'
           channel: 'stable'
 
-      - name: Ensure Android Platform Exists
+      - name: Ensure Android Platform Exists & Patch SDK
         run: |
           if [ ! -d "android" ]; then
             flutter create --platforms=android --project-name xray_ultra .
+          fi
+          # تنظیم نسخه SDK روی 35 به صورت خودکار برای رفع خطای بیلد
+          BUILD_GRADLE="android/app/build.gradle"
+          if [ -f "$BUILD_GRADLE" ]; then
+            sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 35/g' $BUILD_GRADLE
+            sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 35/g' $BUILD_GRADLE
+            sed -i 's/compileSdk [0-9]*/compileSdk 35/g' $BUILD_GRADLE
+            sed -i 's/targetSdk [0-9]*/targetSdk 35/g' $BUILD_GRADLE
           fi
 
       - name: Install Dependencies
