@@ -620,6 +620,8 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   String _cleanUrl(String rawUrl) => rawUrl.trim();
 
+  /// تست پینگ پرسرعت به صورت دسته‌ای (Batched Concurrency)
+  /// در اینجا ۳ کانفیگ همزمان تست می‌شوند تا هم سرعت بالا برود و هم هسته Xray دچار خطا و -1 نشود.
   Future<void> _testAllPings() async {
     if (_isTestingAllPings || _configs.isEmpty) return;
 
@@ -636,9 +638,13 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       });
     }
 
-    for (final item in _configs) {
+    const int batchSize = 3;
+    for (int i = 0; i < _configs.length; i += batchSize) {
       if (!mounted) break;
-      await _testSinglePing(item);
+      final end = (i + batchSize < _configs.length) ? i + batchSize : _configs.length;
+      final batch = _configs.sublist(i, end);
+
+      await Future.wait(batch.map((item) => _testSinglePing(item)));
     }
 
     if (!mounted) return;
@@ -669,7 +675,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             url: url,
           )
           .timeout(
-            const Duration(seconds: 10),
+            const Duration(seconds: 8),
             onTimeout: () => -1,
           );
 
@@ -1052,12 +1058,12 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             ),
             InkWell(
               onTap: _isTestingAllPings ? null : _testAllPings,
-              child: const Column(
+              child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.bolt, color: Colors.white54, size: 20),
-                  SizedBox(height: 2),
-                  Text('Test', style: TextStyle(color: Colors.white54, fontSize: 10)),
+                  Icon(Icons.bolt, color: _isTestingAllPings ? Colors.amber : Colors.white54, size: 20),
+                  const SizedBox(height: 2),
+                  Text(_isTestingAllPings ? 'Testing...' : 'Test', style: const TextStyle(color: Colors.white54, fontSize: 10)),
                 ],
               ),
             ),
