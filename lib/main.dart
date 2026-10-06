@@ -170,7 +170,6 @@ class _LoginScreenState extends State<LoginScreen> {
         if (finalUserId != null && finalUserData != null) {
           final Map<String, dynamic> currentUserData = Map<String, dynamic>.from(finalUserData);
 
-          // بررسی فعال بودن حساب کاربری هنگام لاگین
           if (!_isTruthy(currentUserData['active'])) {
             _showError('حساب کاربری شما غیرفعال شده است. لطفاً با ادمین تماس بگیرید.');
             setState(() => _isLoading = false);
@@ -433,7 +432,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
         if (data == null || data is! Map) return;
 
-        // بررسی فوری غیرفعال شدن حساب کاربری توسط ادمین
         if (!_isTruthy(data['active'])) {
           _logoutUser('حساب کاربری شما توسط ادمین غیرفعال شده است.');
           return;
@@ -659,27 +657,11 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       final configUrl = _cleanUrl(rawUrl);
       V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
 
+      // تست پینگ استاندارد و دقیق از طریق V2Ray Core (دقیقاً مشابه V2RayNG بر اساس اینترنت فعلی کاربر)
       int delay = await flutterV2ray.getServerDelay(
         config: parser.getFullConfiguration(),
         url: 'http://www.gstatic.com/generate_204',
-      ).timeout(const Duration(seconds: 3), onTimeout: () => -1);
-
-      if (delay <= 0) {
-        final stopwatch = Stopwatch()..start();
-        final int targetPort = int.tryParse(parser.port.toString()) ?? 443;
-        try {
-          final socket = await Socket.connect(
-            parser.address,
-            targetPort,
-            timeout: const Duration(seconds: 2),
-          );
-          stopwatch.stop();
-          delay = stopwatch.elapsedMilliseconds;
-          await socket.close();
-        } catch (_) {
-          delay = -1;
-        }
-      }
+      ).timeout(const Duration(seconds: 6), onTimeout: () => -1);
 
       if (mounted) {
         setState(() {
