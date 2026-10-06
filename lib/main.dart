@@ -10,11 +10,11 @@ import 'package:device_info_plus/device_info_plus.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const XrayUltraApp());
+  runApp(const MyApp());
 }
 
-class XrayUltraApp extends StatelessWidget {
-  const XrayUltraApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -22,10 +22,9 @@ class XrayUltraApp extends StatelessWidget {
       title: 'Xray Ultra',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF1B1D29), // گرانیت تیره
+        scaffoldBackgroundColor: const Color(0xFF1B1D29),
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF8B5CF6), // بنفش
-          secondary: Color(0xFF00A86B), // سبز یاقوتی
+          primary: Color(0xFF8B9BB4),
           surface: Color(0xFF222536),
         ),
         appBarTheme: const AppBarTheme(
@@ -76,7 +75,7 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      body: Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6))),
+      body: Center(child: CircularProgressIndicator(color: Color(0xFF8B9BB4))),
     );
   }
 }
@@ -93,7 +92,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  // آدرس هاست و API شما
   static const String apiBase = "https://socialmedia-ad.ir/api.php";
 
   bool _isTruthy(dynamic value) {
@@ -166,11 +164,14 @@ class _LoginScreenState extends State<LoginScreen> {
           });
         }
 
-        if (foundUserId != null && rawUserData != null) {
-          final Map<String, dynamic> currentUserData = Map<String, dynamic>.from(rawUserData);
+        final finalUserId = foundUserId;
+        final finalUserData = rawUserData;
+
+        if (finalUserId != null && finalUserData != null) {
+          final Map<String, dynamic> currentUserData = Map<String, dynamic>.from(finalUserData);
 
           if (!_isTruthy(currentUserData['active'])) {
-            _showError('حساب کاربری شما غیرفعال شده است.');
+            _showError('حساب کاربری شما غیرفعال شده است. لطفاً با ادمین تماس بگیرید.');
             setState(() => _isLoading = false);
             return;
           }
@@ -194,6 +195,7 @@ class _LoginScreenState extends State<LoginScreen> {
             "login_at": activeSessions[deviceId]?['login_at'] ?? nowIso,
             "last_seen": nowIso,
           };
+
           currentUserData['active_sessions'] = activeSessions;
 
           await http.post(
@@ -203,13 +205,13 @@ class _LoginScreenState extends State<LoginScreen> {
           );
 
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('user_id', foundUserId);
+          await prefs.setString('user_id', finalUserId);
           await prefs.setString('device_id', deviceId);
 
           if (mounted) {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (_) => ServerListScreen(userId: foundUserId!)),
+              MaterialPageRoute(builder: (_) => ServerListScreen(userId: finalUserId)),
             );
           }
         } else {
@@ -238,7 +240,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.bolt_rounded, size: 80, color: Color(0xFF00A86B)),
+              const Icon(Icons.vpn_key_rounded, size: 80, color: Color(0xFF8B9BB4)),
               const SizedBox(height: 12),
               const Text('XRAY ULTRA', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
               const SizedBox(height: 32),
@@ -268,7 +270,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 height: 48,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF8B5CF6),
+                    backgroundColor: const Color(0xFF3B4261),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: _isLoading ? null : _login,
@@ -285,22 +287,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-class ConfigModel {
-  final String id;
-  final String name;
-  final String configUrl;
-  int ping;
-  bool isPingLoading;
-
-  ConfigModel({
-    required this.id,
-    required this.name,
-    required this.configUrl,
-    this.ping = -1,
-    this.isPingLoading = false,
-  });
-}
-
 class ServerListScreen extends StatefulWidget {
   final String userId;
   const ServerListScreen({super.key, required this.userId});
@@ -313,11 +299,14 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   static const String apiBase = "https://socialmedia-ad.ir/api.php";
 
   late FlutterV2ray flutterV2ray;
-  List<ConfigModel> _configs = [];
+  List<dynamic> _configs = [];
+  final Map<String, int> _pings = {};
+  final Map<String, bool> _pingLoading = {};
+
   bool _isLoading = true;
   bool _isTestingAllPings = false;
   bool _isConnectingProcess = false;
-  String? _selectedConfigUrl;
+  String? _selectedConfigId;
   bool _isConnected = false;
 
   Map<String, dynamic>? _userData;
@@ -355,8 +344,26 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   Future<void> _initDeviceIdAndStart() async {
     final prefs = await SharedPreferences.getInstance();
     _deviceId = prefs.getString('device_id');
+
+    if (_deviceId == null) {
+      try {
+        DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+        if (Platform.isAndroid) {
+          AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+          String model = androidInfo.model.replaceAll(RegExp(r'[^\w\s-]'), '');
+          _deviceId = model.isNotEmpty ? model : 'ANDROID_${androidInfo.id}';
+        } else if (Platform.isIOS) {
+          IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
+          _deviceId = iosInfo.model;
+        }
+      } catch (_) {
+        _deviceId = 'DEVICE_${DateTime.now().millisecondsSinceEpoch}';
+      }
+      await prefs.setString('device_id', _deviceId!);
+    }
+
     _fetchUserDataAndCheck();
-    _userCheckTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+    _userCheckTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       _fetchUserDataAndCheck();
       _fetchAnnouncement();
     });
@@ -422,11 +429,37 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       final res = await http.get(Uri.parse("$apiBase?action=get_user&id=${widget.userId}"));
       if (res.statusCode == 200 && res.body != 'null') {
         final dynamic data = json.decode(res.body);
+
         if (data == null || data is! Map) return;
 
         if (!_isTruthy(data['active'])) {
-          _logoutUser('حساب کاربری شما غیرفعال شده است.');
+          _logoutUser('حساب کاربری شما توسط ادمین غیرفعال شده است.');
           return;
+        }
+
+        final currentDeviceId = _deviceId;
+        if (currentDeviceId != null) {
+          Map<String, dynamic> activeSessions = {};
+          if (data['active_sessions'] != null && data['active_sessions'] is Map) {
+            activeSessions = Map<String, dynamic>.from(data['active_sessions']);
+          }
+
+          if (!activeSessions.containsKey(currentDeviceId)) {
+            _logoutUser('دستگاه شما توسط ادمین از حساب خارج شد.');
+            return;
+          } else {
+            final session = activeSessions[currentDeviceId];
+            activeSessions[currentDeviceId] = {
+              if (session is Map) ...session,
+              "last_seen": DateTime.now().toIso8601String(),
+            };
+            data['active_sessions'] = activeSessions;
+            http.post(
+              Uri.parse("$apiBase?action=save_user"),
+              headers: {'Content-Type': 'application/json'},
+              body: json.encode(data),
+            );
+          }
         }
 
         _userData = Map<String, dynamic>.from(data);
@@ -435,29 +468,40 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         if (data['expire_at'] != null && data['expire_at'].toString().isNotEmpty) {
           try {
             final expireDate = DateTime.parse(data['expire_at'].toString());
-            final diff = expireDate.difference(DateTime.now());
+            final now = DateTime.now();
+            final diff = expireDate.difference(now);
+
             if (diff.isNegative) {
               _logoutUser('اعتبار زمانی حساب شما به پایان رسیده است.');
               return;
             } else {
               if (diff.inDays > 0) {
-                _remainingTimeText = '${diff.inDays} روز باقی‌مانده';
-              } else {
+                _remainingTimeText = '${diff.inDays} روز باقی‌‌مانده';
+              } else if (diff.inHours > 0) {
                 _remainingTimeText = '${diff.inHours} ساعت باقی‌مانده';
+              } else {
+                _remainingTimeText = '${diff.inMinutes} دقیقه باقی‌مانده';
               }
             }
-          } catch (_) {}
+          } catch (_) {
+            _remainingTimeText = 'نامشخص';
+          }
         } else {
           _remainingTimeText = 'نامحدود';
         }
 
         double maxGb = double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0.0;
-        if (maxGb > 0 && (_accumulatedUsedBytes / (1024 * 1024 * 1024)) >= maxGb) {
-          _logoutUser('حجم مصرفی حساب شما به پایان رسیده است.');
-          return;
+        if (maxGb > 0) {
+          double usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
+          if (usedGb >= maxGb) {
+            _logoutUser('حجم مصرفی حساب شما به پایان رسیده است.');
+            return;
+          }
         }
 
         if (mounted) setState(() {});
+      } else {
+        _logoutUser('حساب کاربری شما یافت نشد.');
       }
     } catch (_) {}
   }
@@ -477,11 +521,13 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
     _lastSessionUpload = currentUpload;
     _lastSessionDownload = currentDownload;
+
     int totalDelta = uploadDelta + downloadDelta;
 
     if (totalDelta > 0) {
       _accumulatedUsedBytes += totalDelta;
       _userData!['used_bytes'] = _accumulatedUsedBytes;
+
       if (mounted) setState(() {});
 
       try {
@@ -491,6 +537,11 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
           body: json.encode(_userData),
         );
       } catch (_) {}
+
+      double maxGb = double.tryParse(_userData!['max_volume_gb']?.toString() ?? '0') ?? 0.0;
+      if (maxGb > 0 && (_accumulatedUsedBytes / (1024 * 1024 * 1024)) >= maxGb) {
+        _logoutUser('حجم مجاز شما به پایان رسید.');
+      }
     }
   }
 
@@ -500,101 +551,60 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       await flutterV2ray.stopV2Ray();
     } catch (_) {}
 
+    final currentDeviceId = _deviceId;
+    if (currentDeviceId != null && _userData != null) {
+      try {
+        Map<String, dynamic> activeSessions = Map<String, dynamic>.from(_userData!['active_sessions'] ?? {});
+        activeSessions.remove(currentDeviceId);
+        _userData!['active_sessions'] = activeSessions;
+        await http.post(
+          Uri.parse("$apiBase?action=save_user"),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode(_userData),
+        );
+      } catch (_) {}
+    }
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('user_id');
     await prefs.remove('device_id');
 
     if (mounted) {
       if (reason.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(reason), backgroundColor: Colors.redAccent));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(reason), backgroundColor: Colors.redAccent),
+        );
       }
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
     }
   }
 
-  // پردازش هوشمند کانفیگ‌های دستی و لینک‌های اشتراک (Subscription)
   Future<void> _fetchConfigs() async {
     setState(() => _isLoading = true);
     try {
       final response = await http.get(Uri.parse("$apiBase?action=get_configs"));
       if (response.statusCode == 200 && response.body != 'null') {
         final dynamic data = json.decode(response.body);
-        List<ConfigModel> parsedList = [];
+        List<dynamic> loadedConfigs = [];
 
-        List items = [];
         if (data is List) {
-          items = data;
-        } else if (data is Map) {
-          data.forEach((key, value) => items.add(value));
-        }
-
-        for (var item in items) {
-          if (item == null || item is! Map) continue;
-          if (!_isTruthy(item['active'])) continue;
-
-          String rawContent = (item['config'] ?? '').toString().trim();
-          String baseName = item['name']?.toString() ?? 'سرور Xray';
-          String configId = item['id']?.toString() ?? baseName;
-
-          // بررسی اینکه آیا لینک اشتراک (Subscription URL) است یا مستقیم
-          if (rawContent.startsWith('http://') || rawContent.startsWith('https://')) {
-            try {
-              final subRes = await http.get(Uri.parse(rawContent));
-              if (subRes.statusCode == 200) {
-                String subBody = subRes.body.trim();
-                String decodedString = subBody;
-                try {
-                  // دیکود کردن محتوای Base64 ساب‌سکریپشن
-                  decodedString = utf8.decode(base64.decode(subBody.replaceAll(RegExp(r'\s+'), '')));
-                } catch (_) {}
-
-                List<String> lines = decodedString.split('\n');
-                int subIndex = 1;
-                for (var line in lines) {
-                  line = line.trim();
-                  if (line.isNotEmpty && (line.startsWith('vless://') || line.startsWith('vmess://') || line.startsWith('trojan://') || line.startsWith('ss://'))) {
-                    try {
-                      V2RayURL parser = FlutterV2ray.parseFromURL(line);
-                      parsedList.add(ConfigModel(
-                        id: '${configId}_$subIndex',
-                        name: parser.remark.isNotEmpty ? parser.remark : '$baseName ($subIndex)',
-                        configUrl: line,
-                      ));
-                    } catch (_) {
-                      parsedList.add(ConfigModel(
-                        id: '${configId}_$subIndex',
-                        name: '$baseName ($subIndex)',
-                        configUrl: line,
-                      ));
-                    }
-                    subIndex++;
-                  }
-                }
-              }
-            } catch (_) {}
-          } else if (rawContent.isNotEmpty) {
-            // کانفیگ مستقیم دستی
-            try {
-              V2RayURL parser = FlutterV2ray.parseFromURL(rawContent);
-              parsedList.add(ConfigModel(
-                id: configId,
-                name: parser.remark.isNotEmpty ? parser.remark : baseName,
-                configUrl: rawContent,
-              ));
-            } catch (_) {
-              parsedList.add(ConfigModel(
-                id: configId,
-                name: baseName,
-                configUrl: rawContent,
-              ));
+          for (var item in data) {
+            if (item != null && item is Map && _isTruthy(item['active'])) {
+              loadedConfigs.add(item);
             }
           }
+        } else if (data is Map) {
+          data.forEach((key, value) {
+            if (value != null && value is Map && _isTruthy(value['active'])) {
+              loadedConfigs.add(value);
+            }
+          });
         }
 
         setState(() {
-          _configs = parsedList;
-          if (_configs.isNotEmpty && _selectedConfigUrl == null) {
-            _selectedConfigUrl = _configs[0].configUrl;
+          _configs = loadedConfigs;
+          if (_configs.isNotEmpty && _selectedConfigId == null) {
+            _selectedConfigId = _configs[0]['id']?.toString() ?? _configs[0]['name'];
           }
           _isLoading = false;
         });
@@ -608,50 +618,74 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     }
   }
 
-  // سیستم تست پینگ حرفه‌ای Real Delay مشابه V2RayNG با آدرس استاندارد generate_204
+  String _cleanUrl(String rawUrl) => rawUrl.trim();
+
+  // سیستم پینگ همزمان و پرسرعت (Parallel Pinging) دقیقاً مانند V2RayNG
   Future<void> _testAllPings() async {
     if (_isTestingAllPings) return;
     setState(() => _isTestingAllPings = true);
 
-    for (int i = 0; i < _configs.length; i++) {
-      await _testSingleConfigPing(i);
-    }
+    // اجرای همزمان تست پینگ برای تمامی کانفیگ‌ها به منظور دستیابی به سرعت بالای V2RayNG
+    await Future.wait(_configs.map((item) => _testSinglePing(item)));
 
     if (mounted) {
       _configs.sort((a, b) {
-        int pA = a.ping > 0 ? a.ping : 999999;
-        int pB = b.ping > 0 ? b.ping : 999999;
-        return pA.compareTo(pB);
+        final String idA = a['id']?.toString() ?? a['name'];
+        final String idB = b['id']?.toString() ?? b['name'];
+        final int pingA = _pings[idA] ?? 999999;
+        final int pingB = _pings[idB] ?? 999999;
+
+        final int validPingA = pingA > 0 ? pingA : 999999;
+        final int validPingB = pingB > 0 ? pingB : 999999;
+
+        return validPingA.compareTo(validPingB);
       });
+
       setState(() => _isTestingAllPings = false);
     }
   }
 
-  Future<void> _testSingleConfigPing(int index) async {
-    if (mounted) setState(() => _configs[index].isPingLoading = true);
+  // متود تست پینگ تک سرور با استفاده از هسته V2Ray و آدرس‌های استاندارد سنجش تاخیر
+  Future<void> _testSinglePing(Map<String, dynamic> item) async {
+    final String rawUrl = (item['config'] ?? '').toString();
+    final String configId = item['id']?.toString() ?? item['name'];
+
+    if (rawUrl.isEmpty) return;
+
+    if (mounted) setState(() => _pingLoading[configId] = true);
 
     int delay = -1;
     try {
-      V2RayURL parser = FlutterV2ray.parseFromURL(_configs[index].configUrl);
-      // استفاده دقیق از متد Real Delay با آدرس استاندارد تست پینگ V2RayNG
+      final configUrl = _cleanUrl(rawUrl);
+      V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
+
+      // تست پینگ واقعی از طریق هسته V2Ray با استفاده از آدرس استاندارد اتصال‌سنج گوگل
       delay = await flutterV2ray.getServerDelay(
         config: parser.getFullConfiguration(),
-        url: 'https://www.gstatic.com/generate_204',
-      ).timeout(const Duration(seconds: 5), onTimeout: () => -1);
+        url: 'http://www.gstatic.com/generate_204',
+      ).timeout(const Duration(seconds: 4), onTimeout: () => -1);
+
+      // اگر آدرس اول پاسخ نداد، به عنوان پشتیبان از Cloudflare تست می‌شود
+      if (delay <= 0) {
+        delay = await flutterV2ray.getServerDelay(
+          config: parser.getFullConfiguration(),
+          url: 'http://cp.cloudflare.com/generate_204',
+        ).timeout(const Duration(seconds: 4), onTimeout: () => -1);
+      }
     } catch (_) {
       delay = -1;
     }
 
     if (mounted) {
       setState(() {
-        _configs[index].ping = delay;
-        _configs[index].isPingLoading = false;
+        _pings[configId] = delay;
+        _pingLoading[configId] = false;
       });
     }
   }
 
   Future<void> _toggleMainConnection() async {
-    if (_isConnectingProcess || _selectedConfigUrl == null) return;
+    if (_isConnectingProcess || _selectedConfigId == null) return;
 
     if (_isConnected) {
       setState(() => _isConnectingProcess = true);
@@ -665,19 +699,24 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       return;
     }
 
-    final selectedConfigItem = _configs.firstWhere(
-      (c) => c.configUrl == _selectedConfigUrl,
-      orElse: () => _configs.first,
+    final selectedConfig = _configs.firstWhere(
+      (c) => (c['id']?.toString() ?? c['name']) == _selectedConfigId,
+      orElse: () => null,
     );
 
+    if (selectedConfig == null) return;
+
+    final String rawUrl = (selectedConfig['config'] ?? '').toString();
     setState(() => _isConnectingProcess = true);
 
     try {
       final bool hasPermission = await flutterV2ray.requestPermission();
       if (hasPermission) {
-        V2RayURL parser = FlutterV2ray.parseFromURL(selectedConfigItem.configUrl);
+        final configUrl = _cleanUrl(rawUrl);
+        V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
+
         await flutterV2ray.startV2Ray(
-          remark: selectedConfigItem.name,
+          remark: selectedConfig['name'] ?? parser.remark,
           config: parser.getFullConfiguration(),
           proxyOnly: false,
         );
@@ -704,6 +743,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     if (_announcementData == null || !_isTruthy(_announcementData!['enabled'])) {
       return const SizedBox.shrink();
     }
+
     final String text = _announcementData!['text'] ?? '';
     final String imageUrl = _announcementData!['image_url'] ?? '';
     final String targetUrl = _announcementData!['target_url'] ?? '';
@@ -731,7 +771,13 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             if (imageUrl.isNotEmpty)
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: Image.network(imageUrl, width: double.infinity, height: 120, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                child: Image.network(
+                  imageUrl,
+                  width: double.infinity,
+                  height: 120,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                ),
               ),
             if (imageUrl.isNotEmpty && text.isNotEmpty) const SizedBox(height: 8),
             if (text.isNotEmpty)
@@ -739,7 +785,14 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
                 children: [
                   const Icon(Icons.campaign, color: Color(0xFFA78BFA), size: 22),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500))),
+                  Expanded(
+                    child: Text(
+                      text,
+                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  if (targetUrl.isNotEmpty)
+                    const Icon(Icons.arrow_forward_ios, color: Colors.white38, size: 14),
                 ],
               ),
           ],
@@ -760,7 +813,26 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         actions: [
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.redAccent),
-            onPressed: () => _logoutUser(''),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: const Color(0xFF222536),
+                  title: const Text('خروج از حساب'),
+                  content: const Text('آیا می‌خواهید از حساب کاربری خود خارج شوید؟'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('انصراف')),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _logoutUser('');
+                      },
+                      child: const Text('خروج', style: TextStyle(color: Colors.redAccent)),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -769,31 +841,41 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
           _buildAnnouncementBanner(),
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)))
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFF8B9BB4)))
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     itemCount: _configs.length,
                     itemBuilder: (context, index) {
                       final item = _configs[index];
-                      final bool isSelected = (_selectedConfigUrl == item.configUrl);
-                      final String protocol = _getProtocolType(item.configUrl);
+                      final String configId = item['id']?.toString() ?? item['name'];
+                      final String configUrl = (item['config'] ?? '').toString();
+                      final String protocol = _getProtocolType(configUrl);
+                      final bool isSelected = (_selectedConfigId == configId);
+                      final int ping = _pings[configId] ?? 0;
+                      final bool isPingLoading = _pingLoading[configId] ?? false;
 
                       return GestureDetector(
                         onTap: () {
                           if (_isConnected) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('لطفاً ابتدا اتصال فعلی را قطع کنید.'), backgroundColor: Colors.orangeAccent),
+                              const SnackBar(
+                                content: Text('لطفاً ابتدا اتصال فعلی را قطع کنید.'),
+                                backgroundColor: Colors.orangeAccent,
+                                duration: Duration(seconds: 2),
+                              ),
                             );
                             return;
                           }
-                          setState(() => _selectedConfigUrl = item.configUrl);
+                          setState(() {
+                            _selectedConfigId = configId;
+                          });
                         },
                         child: Container(
                           margin: const EdgeInsets.only(bottom: 10),
                           decoration: BoxDecoration(
                             color: isSelected ? const Color(0xFF2A3045) : const Color(0xFF232738),
                             borderRadius: BorderRadius.circular(12),
-                            border: isSelected ? Border.all(color: const Color(0xFF8B5CF6), width: 1.5) : null,
+                            border: isSelected ? Border.all(color: const Color(0xFF7A93D1), width: 1.5) : null,
                           ),
                           child: IntrinsicHeight(
                             child: Row(
@@ -802,44 +884,58 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
                                   width: 26,
                                   decoration: const BoxDecoration(
                                     color: Colors.black26,
-                                    borderRadius: BorderRadius.only(topLeft: Radius.circular(12), bottomLeft: Radius.circular(12)),
+                                    borderRadius: BorderRadius.only(
+                                      topLeft: Radius.circular(12),
+                                      bottomLeft: Radius.circular(12),
+                                    ),
                                   ),
                                   alignment: Alignment.center,
                                   child: RotatedBox(
                                     quarterTurns: 3,
-                                    child: Text(protocol, style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
+                                    child: Text(
+                                      protocol,
+                                      style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(vertical: 14),
-                                    child: Text(item.name, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    child: Text(
+                                      item['name'] ?? 'سرور Xray',
+                                      style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
                                 ),
-                                GestureDetector(
-                                  onTap: () => _testSingleConfigPing(index),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(12.0),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: item.isPingLoading
-                                            ? Colors.white10
-                                            : (item.ping > 0 ? const Color(0xFF00A86B).withOpacity(0.2) : Colors.red.withOpacity(0.2)),
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: Text(
-                                        item.isPingLoading ? '...' : (item.ping > 0 ? '${item.ping}ms' : '-1ms'),
-                                        style: TextStyle(
-                                          color: item.isPingLoading
-                                              ? Colors.white54
-                                              : (item.ping > 0 ? const Color(0xFF00A86B) : Colors.redAccent),
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
+                                Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: isPingLoading
+                                              ? Colors.white10
+                                              : (ping > 0 ? const Color(0xFF2E5A3C) : const Color(0xFF613137)),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          isPingLoading ? '...' : (ping > 0 ? '${ping}ms' : '-1ms'),
+                                          style: TextStyle(
+                                            color: isPingLoading
+                                                ? Colors.white54
+                                                : (ping > 0 ? const Color(0xFF81C784) : const Color(0xFFE57373)),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ),
-                                    ),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -855,9 +951,14 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
-                Icon(Icons.circle, size: 12, color: _isConnected ? const Color(0xFF00A86B) : Colors.redAccent),
+                Icon(Icons.circle, size: 12, color: _isConnected ? Colors.greenAccent : Colors.redAccent),
                 const SizedBox(width: 8),
-                Expanded(child: Text(_isConnected ? 'CONNECTED' : 'DISCONNECTED', style: const TextStyle(color: Colors.white70, fontSize: 12))),
+                Expanded(
+                  child: Text(
+                    _isConnected ? 'CONNECTED' : 'DISCONNECTED',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ),
               ],
             ),
           ),
@@ -866,7 +967,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 45.0),
         child: FloatingActionButton(
-          backgroundColor: _isConnected ? const Color(0xFF00A86B) : const Color(0xFFB0BEC5),
+          backgroundColor: _isConnected ? const Color(0xFF4CAF50) : const Color(0xFFB0BEC5),
           onPressed: _toggleMainConnection,
           child: _isConnectingProcess
               ? const CircularProgressIndicator(color: Colors.white)
@@ -896,10 +997,13 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
               children: [
                 Text(
                   'حجم: ${usedGb.toStringAsFixed(2)} / ${maxGb > 0 ? maxGb.toStringAsFixed(1) : "∞"} GB',
-                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: Colors.white.withOpacity(0.87), fontSize: 11, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 2),
-                Text('اعتبار: $_remainingTimeText', style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                Text(
+                  'اعتبار: $_remainingTimeText',
+                  style: const TextStyle(color: Colors.white54, fontSize: 10),
+                ),
               ],
             ),
             InkWell(
