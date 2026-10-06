@@ -29,6 +29,6 @@ flutter:
 flutter_launcher_icons:
   image_path: "assets/icon/icon.png"
   android: true
-  ios: true
-  adaptive_icon_background: "#FFFFFF" # پس‌زمینه سفید برای آیکون تطبیقی
+  ios: false
+  adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/icon/icon.png"
