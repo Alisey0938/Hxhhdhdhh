@@ -645,6 +645,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     }
   }
 
+  // سیستم پینگ حرفه‌ای و دقیق دقیقاً مشابه V2RayNG (Real Connection Delay)
   Future<void> _testSinglePing(Map<String, dynamic> item) async {
     final String rawUrl = (item['config'] ?? '').toString();
     final String configId = item['id']?.toString() ?? item['name'];
@@ -653,29 +654,33 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
     if (mounted) setState(() => _pingLoading[configId] = true);
 
+    int delay = -1;
     try {
       final configUrl = _cleanUrl(rawUrl);
       V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
 
-      // تست پینگ استاندارد و دقیق از طریق V2Ray Core (دقیقاً مشابه V2RayNG بر اساس اینترنت فعلی کاربر)
-      int delay = await flutterV2ray.getServerDelay(
+      // تست پینگ واقعی از طریق هسته V2Ray با استفاده از آدرس استاندارد اتصال‌سنج
+      delay = await flutterV2ray.getServerDelay(
         config: parser.getFullConfiguration(),
         url: 'http://www.gstatic.com/generate_204',
-      ).timeout(const Duration(seconds: 6), onTimeout: () => -1);
+      ).timeout(const Duration(seconds: 5), onTimeout: () => -1);
 
-      if (mounted) {
-        setState(() {
-          _pings[configId] = delay;
-          _pingLoading[configId] = false;
-        });
+      // اگر آدرس اول پاسخ نداد، به عنوان پشتیبان از Cloudflare تست می‌کنیم
+      if (delay <= 0) {
+        delay = await flutterV2ray.getServerDelay(
+          config: parser.getFullConfiguration(),
+          url: 'http://cp.cloudflare.com/generate_204',
+        ).timeout(const Duration(seconds: 5), onTimeout: () => -1);
       }
     } catch (_) {
-      if (mounted) {
-        setState(() {
-          _pings[configId] = -1;
-          _pingLoading[configId] = false;
-        });
-      }
+      delay = -1;
+    }
+
+    if (mounted) {
+      setState(() {
+        _pings[configId] = delay;
+        _pingLoading[configId] = false;
+      });
     }
   }
 
