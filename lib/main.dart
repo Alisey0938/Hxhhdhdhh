@@ -772,12 +772,84 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     try {
       final bool hasPermission = await flutterV2ray.requestPermission();
       if (hasPermission) {
-        final configUrl = _cleanUrl(rawUrl);
-        V2RayURL parser = V2ray.parseFromURL(configUrl);
+        String finalConfigJson = '';
+        String remark = selectedConfig['name'] ?? 'Xray Server';
+
+        if (rawUrl.contains('type=xhttp')) {
+          Uri uri = Uri.parse(rawUrl);
+          String host = uri.host;
+          int port = uri.port;
+          String uuid = uri.userInfo;
+          Map<String, String> qParams = uri.queryParameters;
+
+          String path = qParams['path'] ?? '/';
+          String mode = qParams['mode'] ?? 'auto';
+          String serverHost = qParams['host'] ?? host;
+          String security = qParams['security'] ?? '';
+
+          if (uri.fragment.isNotEmpty) {
+            remark = Uri.decodeComponent(uri.fragment);
+          }
+
+          Map<String, dynamic> xhttpConfig = {
+            "log": {"loglevel": "warning"},
+            "inbounds": [
+              {
+                "port": 10808,
+                "protocol": "socks",
+                "settings": {"auth": "noauth", "udp": true},
+                "sniffing": {"enabled": true, "destOverride": ["http", "tls"]}
+              }
+            ],
+            "outbounds": [
+              {
+                "protocol": "vless",
+                "settings": {
+                  "vnext": [
+                    {
+                      "address": host,
+                      "port": port,
+                      "users": [
+                        {
+                          "id": uuid,
+                          "encryption": "none",
+                          "flow": ""
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "streamSettings": {
+                  "network": "xhttp",
+                  "security": security.isEmpty ? "none" : security,
+                  "xhttpSettings": {
+                    "path": path,
+                    "host": serverHost,
+                    "mode": mode
+                  }
+                }
+              }
+            ]
+          };
+
+          if (qParams.containsKey('extra')) {
+            try {
+              xhttpConfig["outbounds"][0]["streamSettings"]["xhttpSettings"]["extra"] = 
+                  json.decode(qParams['extra']!);
+            } catch (_) {}
+          }
+
+          finalConfigJson = json.encode(xhttpConfig);
+        } else {
+          final configUrl = _cleanUrl(rawUrl);
+          V2RayURL parser = V2ray.parseFromURL(configUrl);
+          finalConfigJson = parser.getFullConfiguration();
+          remark = parser.remark.isNotEmpty ? parser.remark : remark;
+        }
 
         await flutterV2ray.startV2Ray(
-          remark: selectedConfig['name'] ?? parser.remark,
-          config: parser.getFullConfiguration(),
+          remark: remark,
+          config: finalConfigJson,
           proxyOnly: false,
         );
       } else {
@@ -1047,7 +1119,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             InkWell(
-              onTap: _fetchConfigs,
+              onTestConfigs: _fetchConfigs,
               child: const Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
