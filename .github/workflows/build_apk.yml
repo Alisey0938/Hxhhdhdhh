@@ -25,59 +25,12 @@ jobs:
           flutter-version: '3.24.5'
           channel: 'stable'
 
-      - name: Create Android Platform & Patch SDK & Namespace
-        run: |
-          flutter create --platforms=android --project-name xray_ultra .
-          python3 -c '
-          import re
-          p = "android/app/build.gradle"
-          c = open(p).read()
-          c = re.sub(r"compileSdk\s+.*", "compileSdk 35", c)
-          c = re.sub(r"targetSdk\s+.*", "targetSdk 35", c)
-          c = re.sub(r"compileSdkVersion\s+.*", "compileSdkVersion 35", c)
-          c = re.sub(r"targetSdkVersion\s+.*", "targetSdkVersion 35", c)
-          c = c.replace("isMinifyEnabled", "minifyEnabled")
-          c = c.replace("isShrinkResources", "shrinkResources")
-          if "namespace" not in c:
-              c = c.replace("android {", "android {\n    namespace \"com.example.xray_ultra\"")
-          if "buildToolsVersion" in c:
-              c = re.sub(r"buildToolsVersion\s+\"[^\"]+\"", "buildToolsVersion \"35.0.0\"", c)
-          else:
-              c = c.replace("defaultConfig {", "defaultConfig {\n        buildToolsVersion \"35.0.0\"")
-          open(p, "w").write(c)
-          '
-
       - name: Install Android SDK Platform and Build-Tools 35
         run: |
           echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Install Dependencies
         run: flutter pub get
-
-      - name: Inject Latest Xray Core into flutter_v2ray
-        run: |
-          # flutter_v2ray 1.0.10 bundles Xray 25.3.6 by default.
-          # Replace only its Android libv2ray AAR with the latest Xray-core build.
-          XRAY_CORE_VERSION="26.9.30"
-          AAR_URL="https://sourceforge.net/projects/androidlibxraylite.mirror/files/v${XRAY_CORE_VERSION}/libv2ray.aar/download"
-
-          mkdir -p xray_temp
-          curl -fL --retry 3 --retry-delay 2 "$AAR_URL" -o xray_temp/libv2ray.aar
-
-          V2RAY_AAR="$(find "${PUB_CACHE:-$HOME/.pub-cache}" \
-            -type f -path "*/flutter_v2ray-1.0.10/android/libs/libv2ray.aar" \
-            -print -quit)"
-
-          if [ -z "$V2RAY_AAR" ]; then
-            echo "flutter_v2ray 1.0.10 libv2ray.aar was not found in the pub cache."
-            exit 1
-          fi
-
-          echo "Replacing bundled flutter_v2ray core:"
-          echo "  $V2RAY_AAR"
-          cp xray_temp/libv2ray.aar "$V2RAY_AAR"
-
-          rm -rf xray_temp
 
       - name: Generate App Icon
         run: dart run flutter_launcher_icons
