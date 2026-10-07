@@ -28,7 +28,7 @@ jobs:
       - name: Create Android Platform
         run: flutter create --platforms=android --project-name xray_ultra .
 
-      - name: Patch Android Build.gradle (SDK & Namespace)
+      - name: Patch Android Build.gradle (Clean Minify & Fix SDK)
         run: |
           python3 -c '
           import re
@@ -50,6 +50,12 @@ jobs:
               c = re.sub(r"buildToolsVersion\s+\"[^\"]+\"", "buildToolsVersion \"35.0.0\"", c)
           else:
               c = c.replace("defaultConfig {", "defaultConfig {\n        buildToolsVersion \"35.0.0\"")
+
+          # پاک کردن خطوط دردسرساز فشرده‌سازی برای جلوگیری از ارور Gradle
+          c = re.sub(r".*minifyEnabled.*", "", c)
+          c = re.sub(r".*isMinifyEnabled.*", "", c)
+          c = re.sub(r".*shrinkResources.*", "", c)
+          c = re.sub(r".*isShrinkResources.*", "", c)
 
           open(p, "w").write(c)
           '
