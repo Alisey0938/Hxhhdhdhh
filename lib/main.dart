@@ -585,167 +585,162 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   String _cleanUrl(String rawUrl) => rawUrl.trim();
 
-  // مبدل کاملاً ایمن و پیشرفته برای پشتیبانی صددرصدی از تمام کانفیگ‌ها بدون کرش
   String _parseConfigToJson(String rawUrl) {
-    try {
-      rawUrl = _cleanUrl(rawUrl);
-      
-      bool isTcp = rawUrl.contains('type=tcp');
-      bool isXhttp = rawUrl.contains('type=xhttp');
-      bool isWs = rawUrl.contains('type=ws') || rawUrl.contains('ws://');
+    if (rawUrl.contains('type=xhttp')) {
+      Uri uri = Uri.parse(rawUrl);
+      String host = uri.host;
+      int port = uri.port;
+      String uuid = uri.userInfo;
+      Map<String, String> qParams = uri.queryParameters;
 
-      // استخراج امن کوئری پارامترها حتی در صورت داشتن ? داخل path
-      Map<String, String> qParams = {};
-      int qIndex = rawUrl.indexOf('?');
-      int hashIndex = rawUrl.indexOf('#');
-      if (qIndex != -1) {
-        String queryStr = (hashIndex != -1 && hashIndex > qIndex) 
-            ? rawUrl.substring(qIndex + 1, hashIndex) 
-            : rawUrl.substring(qIndex + 1);
-        
-        for (var param in queryStr.split('&')) {
-          var keyValue = param.split('=');
-          if (keyValue.length >= 2) {
-            qParams[keyValue[0]] = Uri.decodeComponent(keyValue.sublist(1).join('='));
-          } else if (keyValue.length == 1) {
-            qParams[keyValue[0]] = '';
-          }
-        }
-      }
-
-      String protocol = 'vless';
-      if (rawUrl.startsWith('vmess://')) protocol = 'vmess';
-      else if (rawUrl.startsWith('trojan://')) protocol = 'trojan';
-      else if (rawUrl.startsWith('ss://') || rawUrl.startsWith('shadowsocks://')) protocol = 'shadowsocks';
-
-      int schemeEnd = rawUrl.indexOf('://');
-      int atIndex = rawUrl.indexOf('@');
-      String userInfo = '';
-      String host = '';
-      int port = 443;
-
-      if (schemeEnd != -1 && atIndex != -1) {
-        userInfo = rawUrl.substring(schemeEnd + 3, atIndex);
-        String hostPortStr = '';
-        if (qIndex != -1) {
-          hostPortStr = rawUrl.substring(atIndex + 1, qIndex);
-        } else if (hashIndex != -1) {
-          hostPortStr = rawUrl.substring(atIndex + 1, hashIndex);
-        } else {
-          hostPortStr = rawUrl.substring(atIndex + 1);
-        }
-        
-        int lastColon = hostPortStr.lastIndexOf(':');
-        if (lastColon != -1) {
-          host = hostPortStr.substring(0, lastColon);
-          port = int.tryParse(hostPortStr.substring(lastColon + 1)) ?? 443;
-        } else {
-          host = hostPortStr;
-        }
-      }
-
+      String path = qParams['path'] ?? '/';
+      String mode = qParams['mode'] ?? 'auto';
+      String serverHost = qParams['host'] ?? host;
       String security = qParams['security'] ?? 'none';
-      if (security.trim().isEmpty) security = 'none';
-      String sni = qParams['sni'] ?? qParams['host'] ?? host;
-      String headerType = qParams['headerType'] ?? 'none';
+      String sni = qParams['sni'] ?? serverHost;
 
-      if (isXhttp) {
-        String path = qParams['path'] ?? '/';
-        String mode = qParams['mode'] ?? 'auto';
-        String serverHost = qParams['host'] ?? host;
-
-        Map<String, dynamic> xhttpConfig = {
-          "log": {"loglevel": "warning"},
-          "inbounds": [{"port": 10808, "protocol": "socks", "settings": {"auth": "noauth", "udp": true}}],
-          "outbounds": [{
-            "protocol": protocol,
+      Map<String, dynamic> xhttpConfig = {
+        "log": {"loglevel": "warning"},
+        "inbounds": [
+          {
+            "port": 10808,
+            "protocol": "socks",
+            "settings": {"auth": "noauth", "udp": true},
+            "sniffing": {"enabled": true, "destOverride": ["http", "tls"]}
+          }
+        ],
+        "outbounds": [
+          {
+            "protocol": "vless",
             "settings": {
-              "vnext": [{"address": host, "port": port, "users": [{"id": userInfo, "encryption": "none", "flow": qParams['flow'] ?? ''}]}]
+              "vnext": [
+                {
+                  "address": host,
+                  "port": port,
+                  "users": [
+                    {
+                      "id": uuid,
+                      "encryption": "none",
+                      "flow": qParams['flow'] ?? ''
+                    }
+                  ]
+                }
+              ]
             },
             "streamSettings": {
               "network": "xhttp",
               "security": security,
-              "xhttpSettings": {"path": path, "host": serverHost, "mode": mode}
+              "xhttpSettings": {
+                "path": path,
+                "host": serverHost,
+                "mode": mode
+              }
             }
-          }]
-        };
-        if (security == 'tls' || security == 'xtls') {
-          xhttpConfig["outbounds"][0]["streamSettings"]["tlsSettings"] = {"serverName": sni, "allowInsecure": true, "fingerprint": "chrome"};
-        }
-        return json.encode(xhttpConfig);
-      } 
-      else if (isWs) {
-        String path = qParams['path'] ?? '/';
-        String wsHost = qParams['host'] ?? host;
+          }
+        ]
+      };
 
-        Map<String, dynamic> wsConfig = {
-          "log": {"loglevel": "warning"},
-          "inbounds": [{"port": 10808, "protocol": "socks", "settings": {"auth": "noauth", "udp": true}}],
-          "outbounds": [{
-            "protocol": protocol,
+      if (security == 'tls' || security == 'xtls') {
+        xhttpConfig["outbounds"][0]["streamSettings"]["tlsSettings"] = {
+          "serverName": sni,
+          "allowInsecure": true,
+          "fingerprint": "chrome"
+        };
+      }
+
+      if (qParams.containsKey('extra')) {
+        try {
+          xhttpConfig["outbounds"][0]["streamSettings"]["xhttpSettings"]["extra"] = 
+              json.decode(qParams['extra']!);
+        } catch (_) {}
+      }
+
+      return json.encode(xhttpConfig);
+    } else if (rawUrl.contains('type=ws') || rawUrl.contains('ws://')) {
+      Uri uri = Uri.parse(rawUrl);
+      String protocol = uri.scheme.toLowerCase();
+      if (protocol.isEmpty) protocol = 'vless';
+      String host = uri.host;
+      int port = uri.port;
+      String uuid = uri.userInfo;
+      Map<String, String> qParams = uri.queryParameters;
+
+      String path = qParams['path'] ?? '/';
+      String wsHost = qParams['host'] ?? host;
+      String security = qParams['security'] ?? 'none';
+      String sni = qParams['sni'] ?? wsHost;
+
+      Map<String, dynamic> wsConfig = {
+        "log": {"loglevel": "warning"},
+        "inbounds": [
+          {
+            "port": 10808,
+            "protocol": "socks",
+            "settings": {"auth": "noauth", "udp": true},
+            "sniffing": {"enabled": true, "destOverride": ["http", "tls"]}
+          }
+        ],
+        "outbounds": [
+          {
+            "protocol": protocol == 'ss' ? 'shadowsocks' : protocol,
             "settings": protocol == 'trojan' ? {
-              "servers": [{"address": host, "port": port, "password": userInfo}]
+              "servers": [
+                {
+                  "address": host,
+                  "port": port,
+                  "password": uuid
+                }
+              ]
             } : {
-              "vnext": [{"address": host, "port": port, "users": [{"id": userInfo, "encryption": "none", "flow": qParams['flow'] ?? ''}]}]
+              "vnext": [
+                {
+                  "address": host,
+                  "port": port,
+                  "users": [
+                    protocol == 'vmess' ? {
+                      "id": uuid,
+                      "alterId": 0,
+                      "security": "auto"
+                    } : {
+                      "id": uuid,
+                      "encryption": "none",
+                      "flow": ""
+                    }
+                  ]
+                }
+              ]
             },
             "streamSettings": {
               "network": "ws",
               "security": security,
               "wsSettings": {
                 "path": path,
-                "headers": {"Host": wsHost}
+                "headers": {
+                  "Host": wsHost
+                }
               }
             }
-          }]
-        };
-        if (security == 'tls' || security == 'xtls') {
-          wsConfig["outbounds"][0]["streamSettings"]["tlsSettings"] = {"serverName": sni, "allowInsecure": true, "fingerprint": "chrome"};
-        }
-        return json.encode(wsConfig);
-      }
-      else if (isTcp) {
-        Map<String, dynamic> tcpConfig = {
-          "log": {"loglevel": "warning"},
-          "inbounds": [{"port": 10808, "protocol": "socks", "settings": {"auth": "noauth", "udp": true}}],
-          "outbounds": [{
-            "protocol": protocol,
-            "settings": {
-              "vnext": [{"address": host, "port": port, "users": [{"id": userInfo, "encryption": "none", "flow": qParams['flow'] ?? ''}]}]
-            },
-            "streamSettings": {
-              "network": "tcp",
-              "security": security,
-            }
-          }]
-        };
+          }
+        ]
+      };
 
-        if (headerType == 'http') {
-          tcpConfig["outbounds"][0]["streamSettings"]["tcpSettings"] = {
-            "header": {
-              "type": "http",
-              "request": {
-                "path": [qParams['path'] ?? '/'],
-                "headers": {"Host": [qParams['host'] ?? host]}
-              }
-            }
-          };
-        }
+      if (security == 'tls' || security == 'xtls') {
+        wsConfig["outbounds"][0]["streamSettings"]["tlsSettings"] = {
+          "serverName": sni,
+          "allowInsecure": true,
+          "fingerprint": "chrome"
+        };
+      }
 
-        if (security == 'tls' || security == 'xtls') {
-          tcpConfig["outbounds"][0]["streamSettings"]["tlsSettings"] = {"serverName": sni, "allowInsecure": true, "fingerprint": "chrome"};
-        }
-        return json.encode(tcpConfig);
-      }
-      else {
-        V2RayURL parser = V2ray.parseFromURL(rawUrl);
-        return parser.getFullConfiguration();
-      }
-    } catch (_) {
-      V2RayURL parser = V2ray.parseFromURL(rawUrl);
+      return json.encode(wsConfig);
+    } else {
+      final configUrl = _cleanUrl(rawUrl);
+      V2RayURL parser = V2ray.parseFromURL(configUrl);
       return parser.getFullConfiguration();
     }
   }
 
+  // بهینه‌سازی شده برای تست پینگ همزمان و سریع‌تر تمام سرورها
   Future<void> _testAllPings() async {
     if (_isTestingAllPings || _configs.isEmpty) return;
 
@@ -762,6 +757,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       });
     }
 
+    // اجرای همزمان (Parallel) تست پینگ برای تمامی سرورها به منظور افزایش سرعت چشمگیر
     await Future.wait(_configs.map((item) async {
       if (!mounted) return;
       await _testServerDelay(item);
