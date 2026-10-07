@@ -1119,7 +1119,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             InkWell(
-              onTestConfigs: _fetchConfigs,
+              onTap: _fetchConfigs,
               child: const Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
