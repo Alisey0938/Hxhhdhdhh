@@ -441,7 +441,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
         if (data == null || data is! Map) return;
 
-        // بررسی وضعیت فعال بودن کاربر
         if (!_isTruthy(data['active'])) {
           _logoutUser('حساب کاربری شما توسط ادمین غیرفعال شده است.');
           return;
@@ -465,7 +464,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             };
             data['active_sessions'] = activeSessions;
             
-            // استفاده از update_traffic برای ارسال نشست‌ها بدون دستکاری وضعیت active
             await http.post(
               Uri.parse("$apiBase?action=update_traffic"),
               headers: {'Content-Type': 'application/json'},
@@ -547,7 +545,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       if (mounted) setState(() {});
 
       try {
-        // ارسال فقط حجم مصرفی با متد امن update_traffic (بدون امکان بازنویسی فیلد active)
         await http.post(
           Uri.parse("$apiBase?action=update_traffic"),
           headers: {'Content-Type': 'application/json'},
@@ -645,6 +642,153 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   String _cleanUrl(String rawUrl) => rawUrl.trim();
 
+  // متد جامع برای تبدیل انواع لینک‌ها (Xhttp، وب‌سوکت WS و استاندارد) به JSON معتبر هسته Xray
+  String _parseConfigToJson(String rawUrl) {
+    if (rawUrl.contains('type=xhttp')) {
+      Uri uri = Uri.parse(rawUrl);
+      String host = uri.host;
+      int port = uri.port;
+      String uuid = uri.userInfo;
+      Map<String, String> qParams = uri.queryParameters;
+
+      String path = qParams['path'] ?? '/';
+      String mode = qParams['mode'] ?? 'auto';
+      String serverHost = qParams['host'] ?? host;
+      String security = qParams['security'] ?? '';
+
+      Map<String, dynamic> xhttpConfig = {
+        "log": {"loglevel": "warning"},
+        "inbounds": [
+          {
+            "port": 10808,
+            "protocol": "socks",
+            "settings": {"auth": "noauth", "udp": true},
+            "sniffing": {"enabled": true, "destOverride": ["http", "tls"]}
+          }
+        ],
+        "outbounds": [
+          {
+            "protocol": "vless",
+            "settings": {
+              "vnext": [
+                {
+                  "address": host,
+                  "port": port,
+                  "users": [
+                    {
+                      "id": uuid,
+                      "encryption": "none",
+                      "flow": ""
+                    }
+                  ]
+                }
+              ]
+            },
+            "streamSettings": {
+              "network": "xhttp",
+              "security": security.isEmpty ? "none" : security,
+              "xhttpSettings": {
+                "path": path,
+                "host": serverHost,
+                "mode": mode
+              }
+            }
+          }
+        ]
+      };
+
+      if (qParams.containsKey('extra')) {
+        try {
+          xhttpConfig["outbounds"][0]["streamSettings"]["xhttpSettings"]["extra"] = 
+              json.decode(qParams['extra']!);
+        } catch (_) {}
+      }
+
+      return json.encode(xhttpConfig);
+    } else if (rawUrl.contains('type=ws') || rawUrl.contains('ws://')) {
+      Uri uri = Uri.parse(rawUrl);
+      String protocol = uri.scheme.toLowerCase();
+      if (protocol.isEmpty) protocol = 'vless';
+      String host = uri.host;
+      int port = uri.port;
+      String uuid = uri.userInfo;
+      Map<String, String> qParams = uri.queryParameters;
+
+      String path = qParams['path'] ?? '/';
+      String wsHost = qParams['host'] ?? host;
+      String security = qParams['security'] ?? 'none';
+      String sni = qParams['sni'] ?? wsHost;
+
+      Map<String, dynamic> wsConfig = {
+        "log": {"loglevel": "warning"},
+        "inbounds": [
+          {
+            "port": 10808,
+            "protocol": "socks",
+            "settings": {"auth": "noauth", "udp": true},
+            "sniffing": {"enabled": true, "destOverride": ["http", "tls"]}
+          }
+        ],
+        "outbounds": [
+          {
+            "protocol": protocol == 'ss' ? 'shadowsocks' : protocol,
+            "settings": protocol == 'trojan' ? {
+              "servers": [
+                {
+                  "address": host,
+                  "port": port,
+                  "password": uuid
+                }
+              ]
+            } : {
+              "vnext": [
+                {
+                  "address": host,
+                  "port": port,
+                  "users": [
+                    protocol == 'vmess' ? {
+                      "id": uuid,
+                      "alterId": 0,
+                      "security": "auto"
+                    } : {
+                      "id": uuid,
+                      "encryption": "none",
+                      "flow": ""
+                    }
+                  ]
+                }
+              ]
+            },
+            "streamSettings": {
+              "network": "ws",
+              "security": security,
+              "wsSettings": {
+                "path": path,
+                "headers": {
+                  "Host": wsHost
+                }
+              }
+            }
+          }
+        ]
+      };
+
+      if (security == 'tls' || security == 'xtls') {
+        wsConfig["outbounds"][0]["streamSettings"]["tlsSettings"] = {
+          "serverName": sni,
+          "allowInsecure": true,
+          "fingerprint": "chrome"
+        };
+      }
+
+      return json.encode(wsConfig);
+    } else {
+      final configUrl = _cleanUrl(rawUrl);
+      V2RayURL parser = V2ray.parseFromURL(configUrl);
+      return parser.getFullConfiguration();
+    }
+  }
+
   Future<void> _testAllPings() async {
     if (_isTestingAllPings || _configs.isEmpty) return;
 
@@ -702,75 +846,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
     int delay = -1;
     try {
-      String finalConfigJson = '';
-
-      if (rawUrl.contains('type=xhttp')) {
-        Uri uri = Uri.parse(rawUrl);
-        String host = uri.host;
-        int port = uri.port;
-        String uuid = uri.userInfo;
-        Map<String, String> qParams = uri.queryParameters;
-
-        String path = qParams['path'] ?? '/';
-        String mode = qParams['mode'] ?? 'auto';
-        String serverHost = qParams['host'] ?? host;
-        String security = qParams['security'] ?? '';
-
-        Map<String, dynamic> xhttpConfig = {
-          "log": {"loglevel": "warning"},
-          "inbounds": [
-            {
-              "port": 10808,
-              "protocol": "socks",
-              "settings": {"auth": "noauth", "udp": true},
-              "sniffing": {"enabled": true, "destOverride": ["http", "tls"]}
-            }
-          ],
-          "outbounds": [
-            {
-              "protocol": "vless",
-              "settings": {
-                "vnext": [
-                  {
-                    "address": host,
-                    "port": port,
-                    "users": [
-                      {
-                        "id": uuid,
-                        "encryption": "none",
-                        "flow": ""
-                      }
-                    ]
-                  }
-                ]
-              },
-              "streamSettings": {
-                "network": "xhttp",
-                "security": security.isEmpty ? "none" : security,
-                "xhttpSettings": {
-                  "path": path,
-                  "host": serverHost,
-                  "mode": mode
-                }
-              }
-            }
-          ]
-        };
-
-        if (qParams.containsKey('extra')) {
-          try {
-            xhttpConfig["outbounds"][0]["streamSettings"]["xhttpSettings"]["extra"] = 
-                json.decode(qParams['extra']!);
-          } catch (_) {}
-        }
-
-        finalConfigJson = json.encode(xhttpConfig);
-      } else {
-        final configUrl = _cleanUrl(rawUrl);
-        V2RayURL parser = V2ray.parseFromURL(configUrl);
-        finalConfigJson = parser.getFullConfiguration();
-      }
-
+      String finalConfigJson = _parseConfigToJson(rawUrl);
       delay = await flutterV2ray.getServerDelay(config: finalConfigJson);
     } catch (_) {
       delay = -1;
@@ -810,80 +886,17 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     try {
       final bool hasPermission = await flutterV2ray.requestPermission();
       if (hasPermission) {
-        String finalConfigJson = '';
+        String finalConfigJson = _parseConfigToJson(rawUrl);
         String remark = selectedConfig['name'] ?? 'Xray Server';
 
-        if (rawUrl.contains('type=xhttp')) {
-          Uri uri = Uri.parse(rawUrl);
-          String host = uri.host;
-          int port = uri.port;
-          String uuid = uri.userInfo;
-          Map<String, String> qParams = uri.queryParameters;
-
-          String path = qParams['path'] ?? '/';
-          String mode = qParams['mode'] ?? 'auto';
-          String serverHost = qParams['host'] ?? host;
-          String security = qParams['security'] ?? '';
-
-          if (uri.fragment.isNotEmpty) {
-            remark = Uri.decodeComponent(uri.fragment);
+        try {
+          if (!rawUrl.contains('type=xhttp') && !rawUrl.contains('type=ws') && !rawUrl.contains('ws://')) {
+            V2RayURL parser = V2ray.parseFromURL(_cleanUrl(rawUrl));
+            if (parser.remark.isNotEmpty) {
+              remark = parser.remark;
+            }
           }
-
-          Map<String, dynamic> xhttpConfig = {
-            "log": {"loglevel": "warning"},
-            "inbounds": [
-              {
-                "port": 10808,
-                "protocol": "socks",
-                "settings": {"auth": "noauth", "udp": true},
-                "sniffing": {"enabled": true, "destOverride": ["http", "tls"]}
-              }
-            ],
-            "outbounds": [
-              {
-                "protocol": "vless",
-                "settings": {
-                  "vnext": [
-                    {
-                      "address": host,
-                      "port": port,
-                      "users": [
-                        {
-                          "id": uuid,
-                          "encryption": "none",
-                          "flow": ""
-                        }
-                      ]
-                    }
-                  ]
-                },
-                "streamSettings": {
-                  "network": "xhttp",
-                  "security": security.isEmpty ? "none" : security,
-                  "xhttpSettings": {
-                    "path": path,
-                    "host": serverHost,
-                    "mode": mode
-                  }
-                }
-              }
-            ]
-          };
-
-          if (qParams.containsKey('extra')) {
-            try {
-              xhttpConfig["outbounds"][0]["streamSettings"]["xhttpSettings"]["extra"] = 
-                  json.decode(qParams['extra']!);
-            } catch (_) {}
-          }
-
-          finalConfigJson = json.encode(xhttpConfig);
-        } else {
-          final configUrl = _cleanUrl(rawUrl);
-          V2RayURL parser = V2ray.parseFromURL(configUrl);
-          finalConfigJson = parser.getFullConfiguration();
-          remark = parser.remark.isNotEmpty ? parser.remark : remark;
-        }
+        } catch (_) {}
 
         await flutterV2ray.startV2Ray(
           remark: remark,
