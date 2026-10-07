@@ -441,6 +441,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
         if (data == null || data is! Map) return;
 
+        // بررسی وضعیت فعال بودن کاربر
         if (!_isTruthy(data['active'])) {
           _logoutUser('حساب کاربری شما توسط ادمین غیرفعال شده است.');
           return;
@@ -463,10 +464,16 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
               "last_seen": DateTime.now().toIso8601String(),
             };
             data['active_sessions'] = activeSessions;
-            http.post(
-              Uri.parse("$apiBase?action=save_user"),
+            
+            // استفاده از update_traffic برای ارسال نشست‌ها بدون دستکاری وضعیت active
+            await http.post(
+              Uri.parse("$apiBase?action=update_traffic"),
               headers: {'Content-Type': 'application/json'},
-              body: json.encode(data),
+              body: json.encode({
+                "id": widget.userId,
+                "used_bytes": _accumulatedUsedBytes,
+                "active_sessions": activeSessions,
+              }),
             );
           }
         }
@@ -540,10 +547,14 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       if (mounted) setState(() {});
 
       try {
+        // ارسال فقط حجم مصرفی با متد امن update_traffic (بدون امکان بازنویسی فیلد active)
         await http.post(
-          Uri.parse("$apiBase?action=save_user"),
+          Uri.parse("$apiBase?action=update_traffic"),
           headers: {'Content-Type': 'application/json'},
-          body: json.encode(_userData),
+          body: json.encode({
+            "id": widget.userId,
+            "used_bytes": _accumulatedUsedBytes,
+          }),
         );
       } catch (_) {}
 
@@ -561,17 +572,20 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     } catch (_) {}
 
     final currentDeviceId = _deviceId;
-    // اصلاح اصلی: فقط زمانی که کاربر هنوز فعال است سشن دستگاه را از سرور پاک می‌کنیم
-    // تا وضعیت غیرفعال‌سازی توسط ادمین بازنویسی نشود.
     if (currentDeviceId != null && _userData != null && _isTruthy(_userData!['active'])) {
       try {
         Map<String, dynamic> activeSessions = Map<String, dynamic>.from(_userData!['active_sessions'] ?? {});
         activeSessions.remove(currentDeviceId);
         _userData!['active_sessions'] = activeSessions;
+        
         await http.post(
-          Uri.parse("$apiBase?action=save_user"),
+          Uri.parse("$apiBase?action=update_traffic"),
           headers: {'Content-Type': 'application/json'},
-          body: json.encode(_userData),
+          body: json.encode({
+            "id": widget.userId,
+            "active_sessions": activeSessions,
+            "used_bytes": _accumulatedUsedBytes,
+          }),
         );
       } catch (_) {}
     }
