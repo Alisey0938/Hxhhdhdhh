@@ -583,12 +583,12 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     }
   }
 
-  // سیستم دو مرحله‌ای فوق‌العاده قدرتمند و جامع برای پشتیبانی صددرصدی از تمام کانفیگ‌ها (مشابه v2rayNG)
+  // موتور هوشمند دو مرحله‌ای مشابه v2rayNG برای پشتیبانی صددرصدی از تمام کانفیگ‌ها
   String _parseConfigToJson(String rawUrl) {
     try {
       rawUrl = rawUrl.trim();
       
-      // مرحله ۱: پاکسازی استاندارد لینک جهت سازگاری با پارسر پکیج
+      // پاکسازی و پر کردن فیلدهای خالی بدون دستکاری اطلاعات اصلی سرور
       String cleanedUrl = rawUrl
           .replaceAll(RegExp(r'[?&]security=(?=&|#|$)'), '&security=none')
           .replaceAll(RegExp(r'\?security=$'), '?security=none');
@@ -599,6 +599,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             : '$cleanedUrl?encryption=none';
       }
 
+      // تلاش اول با پارسر اصلی پکیج
       try {
         V2RayURL parser = V2ray.parseFromURL(cleanedUrl);
         String jsonConfig = parser.getFullConfiguration();
@@ -607,7 +608,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         }
       } catch (_) {}
 
-      // مرحله ۲: موتور جایگزین جامع برای تجزیه و تحلیل دستی تمام پروتکل‌ها و انواع فرمت‌ها (TCP، WS، gRPC، XHTTP و غیره)
+      // تلاش دوم با موتور دستی کامل برای پشتیبانی از تمام پروتکل‌ها و هدرها
       String protocol = 'vless';
       if (cleanedUrl.startsWith('vmess://')) protocol = 'vmess';
       else if (cleanedUrl.startsWith('trojan://')) protocol = 'trojan';
@@ -805,6 +806,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       });
     }
 
+    // تست همزمان و سریع پینگ تمام سرورها
     await Future.wait(_configs.map((item) async {
       if (!mounted) return;
       await _testServerDelay(item);
