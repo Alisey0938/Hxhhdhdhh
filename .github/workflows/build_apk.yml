@@ -25,7 +25,7 @@ jobs:
           flutter-version: '3.24.5'
           channel: 'stable'
 
-      - name: Create Android Platform & Patch SDK & Namespace
+      - name: Create Android Platform & Patch SDK & Namespace & Enable Minification
         run: |
           flutter create --platforms=android --project-name xray_ultra .
           python3 -c '
@@ -36,8 +36,14 @@ jobs:
           c = re.sub(r"targetSdk\s+.*", "targetSdk 35", c)
           c = re.sub(r"compileSdkVersion\s+.*", "compileSdkVersion 35", c)
           c = re.sub(r"targetSdkVersion\s+.*", "targetSdkVersion 35", c)
-          c = c.replace("isMinifyEnabled", "minifyEnabled")
-          c = c.replace("isShrinkResources", "shrinkResources")
+          
+          # فعال‌سازی فشرده‌سازی و حذف کدهای اضافی برای کاهش حجم
+          if "minifyEnabled" not in c:
+              c = re.sub(r"release\s*\{", "release {\n            minifyEnabled true\n            shrinkResources true", c)
+          else:
+            c = c.replace("minifyEnabled false", "minifyEnabled true")
+            c = c.replace("shrinkResources false", "shrinkResources true")
+
           if "namespace" not in c:
               c = c.replace("android {", "android {\n    namespace \"com.example.xray_ultra\"")
           if "buildToolsVersion" in c:
@@ -57,11 +63,11 @@ jobs:
       - name: Generate App Icon
         run: dart run flutter_launcher_icons
 
-      - name: Build Release APK
-        run: flutter build apk --release --no-tree-shake-icons
+      - name: Build Release APK (Split per ABI)
+        run: flutter build apk --release --split-per-abi --no-tree-shake-icons
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: xray-ultra-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: xray-ultra-release-apks
+          path: build/app/outputs/flutter-apk/
