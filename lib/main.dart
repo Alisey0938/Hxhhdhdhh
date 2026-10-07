@@ -647,7 +647,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
     for (final item in _configs) {
       if (!mounted) break;
-      await _testSingleTcpPing(item);
+      await _testServerDelay(item);
     }
 
     if (!mounted) return;
@@ -670,7 +670,8 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     });
   }
 
-  Future<void> _testSingleTcpPing(Map<String, dynamic> item) async {
+  // پیاده‌سازی تست پینگ دقیق هسته (مشابه Real Delay در v2rayNG)
+  Future<void> _testServerDelay(Map<String, dynamic> item) async {
     final String rawUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name']?.toString() ?? '';
 
@@ -686,48 +687,77 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
     int delay = -1;
     try {
-      String host = '';
-      int port = 443;
+      String finalConfigJson = '';
 
-      if (rawUrl.startsWith('vmess://')) {
-        try {
-          final base64Str = rawUrl.replaceFirst('vmess://', '').split('?')[0].split('#')[0];
-          String normalized = base64Str.padRight((base64Str.length + 3) & ~3, '=');
-          final decoded = utf8.decode(base64.decode(normalized));
-          final jsonMap = json.decode(decoded);
-          host = jsonMap['add']?.toString() ?? '';
-          port = int.tryParse(jsonMap['port']?.toString() ?? '443') ?? 443;
-        } catch (_) {}
-      }
+      if (rawUrl.contains('type=xhttp')) {
+        Uri uri = Uri.parse(rawUrl);
+        String host = uri.host;
+        int port = uri.port;
+        String uuid = uri.userInfo;
+        Map<String, String> qParams = uri.queryParameters;
 
-      if (host.isEmpty) {
-        Uri? uri = Uri.tryParse(rawUrl);
-        if (uri != null && uri.host.isNotEmpty) {
-          host = uri.host;
-          port = uri.hasPort ? uri.port : 443;
-        } else {
-          final parts = rawUrl.split('://');
-          if (parts.length > 1) {
-            final withoutProto = parts[1];
-            final atIndex = withoutProto.indexOf('@');
-            final authorityPart = atIndex != -1 ? withoutProto.substring(atIndex + 1) : withoutProto;
-            final pathSplit = authorityPart.split('/')[0].split('?')[0].split('#')[0];
-            final colonSplit = pathSplit.split(':');
-            host = colonSplit[0];
-            if (colonSplit.length > 1) {
-              port = int.tryParse(colonSplit[1]) ?? 443;
+        String path = qParams['path'] ?? '/';
+        String mode = qParams['mode'] ?? 'auto';
+        String serverHost = qParams['host'] ?? host;
+        String security = qParams['security'] ?? '';
+
+        Map<String, dynamic> xhttpConfig = {
+          "log": {"loglevel": "warning"},
+          "inbounds": [
+            {
+              "port": 10808,
+              "protocol": "socks",
+              "settings": {"auth": "noauth", "udp": true},
+              "sniffing": {"enabled": true, "destOverride": ["http", "tls"]}
             }
-          }
+          ],
+          "outbounds": [
+            {
+              "protocol": "vless",
+              "settings": {
+                "vnext": [
+                  {
+                    "address": host,
+                    "port": port,
+                    "users": [
+                      {
+                        "id": uuid,
+                        "encryption": "none",
+                        "flow": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "streamSettings": {
+                "network": "xhttp",
+                "security": security.isEmpty ? "none" : security,
+                "xhttpSettings": {
+                  "path": path,
+                  "host": serverHost,
+                  "mode": mode
+                }
+              }
+            }
+          ]
+        };
+
+        if (qParams.containsKey('extra')) {
+          try {
+            xhttpConfig["outbounds"][0]["streamSettings"]["xhttpSettings"]["extra"] = 
+                json.decode(qParams['extra']!);
+          } catch (_) {}
         }
+
+        finalConfigJson = json.encode(xhttpConfig);
+      } else {
+        final configUrl = _cleanUrl(rawUrl);
+        V2RayURL parser = V2ray.parseFromURL(configUrl);
+        finalConfigJson = parser.getFullConfiguration();
       }
 
-      if (host.isNotEmpty) {
-        final stopwatch = Stopwatch()..start();
-        final socket = await Socket.connect(host, port, timeout: const Duration(seconds: 2));
-        stopwatch.stop();
-        socket.destroy();
-        delay = stopwatch.elapsedMilliseconds;
-      }
+      // استفاده از متد داخلی هسته برای محاسبه دقیق تاخیر (Real Delay)
+      delay = await flutterV2ray.getServerDelay(config: finalConfigJson);
     } catch (_) {
       delay = -1;
     }
