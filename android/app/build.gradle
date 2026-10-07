@@ -5,6 +5,7 @@ plugins {
 }
 
 android {
+    namespace "com.example.xray_ultra"
     compileSdk 35
     buildToolsVersion "35.0.0"
 
@@ -28,8 +29,8 @@ android {
     buildTypes {
         release {
             signingConfig signingConfigs.debug
-            isMinifyEnabled false
-            isShrinkResources false
+            minifyEnabled false
+            shrinkResources false
         }
     }
 }
