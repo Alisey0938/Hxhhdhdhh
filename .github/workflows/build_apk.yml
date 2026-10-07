@@ -28,7 +28,7 @@ jobs:
       - name: Create Android Platform
         run: flutter create --platforms=android --project-name xray_ultra .
 
-      - name: Patch Android Build.gradle (SDK, Namespace, Minify)
+      - name: Patch Android Build.gradle (SDK & Namespace)
         run: |
           python3 -c '
           import re
@@ -40,13 +40,6 @@ jobs:
           c = re.sub(r"targetSdk\s+.*", "targetSdk 35", c)
           c = re.sub(r"compileSdkVersion\s+.*", "compileSdkVersion 35", c)
           c = re.sub(r"targetSdkVersion\s+.*", "targetSdkVersion 35", c)
-          
-          # فعال‌سازی فشرده‌سازی کدها برای کاهش حجم
-          if "minifyEnabled" not in c:
-              c = re.sub(r"release\s*\{", "release {\n            minifyEnabled true\n            shrinkResources true", c)
-          else:
-            c = c.replace("minifyEnabled false", "minifyEnabled true")
-            c = c.replace("shrinkResources false", "shrinkResources true")
 
           # تنظیم Namespace
           if "namespace" not in c:
