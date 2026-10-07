@@ -523,13 +523,20 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   void _calculateAndSaveTraffic(int currentUpload, int currentDownload) async {
     if (!_isConnected || _userData == null) return;
 
+    if (_lastSessionUpload == 0 && currentUpload > 0) {
+      _lastSessionUpload = currentUpload;
+    }
+    if (_lastSessionDownload == 0 && currentDownload > 0) {
+      _lastSessionDownload = currentDownload;
+    }
+
     int uploadDelta = 0;
     int downloadDelta = 0;
 
-    if (_lastSessionUpload > 0 && currentUpload >= _lastSessionUpload) {
+    if (currentUpload >= _lastSessionUpload) {
       uploadDelta = currentUpload - _lastSessionUpload;
     }
-    if (_lastSessionDownload > 0 && currentDownload >= _lastSessionDownload) {
+    if (currentDownload >= _lastSessionDownload) {
       downloadDelta = currentDownload - _lastSessionDownload;
     }
 
@@ -642,7 +649,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   String _cleanUrl(String rawUrl) => rawUrl.trim();
 
-  // پارسر جامع و بی‌نقص برای انواع کانفیگ‌ها (Xhttp، Websocket، و استاندارد) جهت سازگاری کامل با هسته 26.9.9
   String _parseConfigToJson(String rawUrl) {
     if (rawUrl.contains('type=xhttp')) {
       Uri uri = Uri.parse(rawUrl);
