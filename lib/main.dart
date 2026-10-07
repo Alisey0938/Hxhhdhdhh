@@ -316,7 +316,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   int _lastSessionDownload = 0;
   int _accumulatedUsedBytes = 0;
   String _remainingTimeText = '...';
-  String _coreVersion = '26.9.9'; // نسخه آپدیت‌شده هسته ایکس‌ری
+  String _coreVersion = '26.9.9';
 
   Timer? _userCheckTimer;
   String? _deviceId;
@@ -412,7 +412,10 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       },
     );
 
-    await flutterV2ray.initializeV2Ray();
+    await flutterV2ray.initialize(
+      notificationIconResourceType: "mipmap",
+      notificationIconResourceName: "ic_launcher",
+    );
     
     try {
       String version = await flutterV2ray.getCoreVersion();
