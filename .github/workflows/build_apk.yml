@@ -22,31 +22,8 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.3'
+          flutter-version: '3.24.5'
           channel: 'stable'
-
-      - name: Install Android SDK Platform and Build-Tools 35
-        run: |
-          echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Fresh Android Setup & Force SDK 35
-        run: |
-          rm -rf android
-          flutter create --platforms=android --project-name xray_ultra .
-          python3 -c '
-          import re
-          p = "android/app/build.gradle"
-          c = open(p).read()
-          c = re.sub(r"compileSdk\s+.*", "compileSdk 35", c)
-          c = re.sub(r"targetSdk\s+.*", "targetSdk 35", c)
-          c = re.sub(r"compileSdkVersion\s+.*", "compileSdkVersion 35", c)
-          c = re.sub(r"targetSdkVersion\s+.*", "targetSdkVersion 35", c)
-          if "buildToolsVersion" in c:
-              c = re.sub(r"buildToolsVersion\s+\"[^\"]+\"", "buildToolsVersion \"35.0.0\"", c)
-          else:
-              c = c.replace("defaultConfig {", "defaultConfig {\n        buildToolsVersion \"35.0.0\"")
-          open(p, "w").write(c)
-          '
 
       - name: Install Dependencies
         run: flutter pub get
