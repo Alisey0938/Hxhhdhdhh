@@ -92,18 +92,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  static const String apiBase = "https://socialmedia-ad.ir/api.php";
-
-  bool _isTruthy(dynamic value) {
-    if (value == null) return false;
-    if (value is bool) return value;
-    if (value is int) return value == 1;
-    if (value is String) {
-      final val = value.trim().toLowerCase();
-      return val == 'true' || val == '1';
-    }
-    return false;
-  }
+  // آپدیت شده به index.php برای سازگاری کامل با سرور
+  static const String apiBase = "https://socialmedia-ad.ir/index.php";
 
   Future<String> _getDeviceId() async {
     try {
@@ -134,88 +124,35 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final res = await http.get(Uri.parse("$apiBase?action=get_users"));
-      if (res.statusCode == 200 && res.body != 'null') {
-        final dynamic decodedData = json.decode(res.body);
-        String? foundUserId;
-        Map<String, dynamic>? rawUserData;
+      final deviceId = await _getDeviceId();
+      final res = await http.post(
+        Uri.parse("$apiBase?action=user_login"),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          "username": username,
+          "password": password,
+          "device_id": deviceId,
+        }),
+      );
 
-        if (decodedData is List) {
-          for (int i = 0; i < decodedData.length; i++) {
-            final item = decodedData[i];
-            if (item != null && item is Map) {
-              if (item['username']?.toString().trim() == username &&
-                  item['password']?.toString().trim() == password) {
-                foundUserId = item['id']?.toString() ?? i.toString();
-                rawUserData = Map<String, dynamic>.from(item);
-                break;
-              }
-            }
-          }
-        } else if (decodedData is Map) {
-          decodedData.forEach((key, value) {
-            if (value != null && value is Map) {
-              if (value['username']?.toString().trim() == username &&
-                  value['password']?.toString().trim() == password) {
-                foundUserId = key.toString();
-                rawUserData = Map<String, dynamic>.from(value);
-              }
-            }
-          });
-        }
-
-        final finalUserId = foundUserId;
-        final finalUserData = rawUserData;
-
-        if (finalUserId != null && finalUserData != null) {
-          final Map<String, dynamic> currentUserData = Map<String, dynamic>.from(finalUserData);
-
-          if (!_isTruthy(currentUserData['active'])) {
-            _showError('حساب کاربری شما غیرفعال شده است. لطفاً با ادمین تماس بگیرید.');
-            setState(() => _isLoading = false);
-            return;
-          }
-
-          final String deviceId = await _getDeviceId();
-          final int maxDevices = int.tryParse(currentUserData['max_devices']?.toString() ?? '1') ?? 1;
-
-          Map<String, dynamic> activeSessions = {};
-          if (currentUserData['active_sessions'] != null && currentUserData['active_sessions'] is Map) {
-            activeSessions = Map<String, dynamic>.from(currentUserData['active_sessions']);
-          }
-
-          if (!activeSessions.containsKey(deviceId) && activeSessions.length >= maxDevices) {
-            _showError('محدودیت تعداد کاربر آنلاین! این اکانت در دستگاه دیگری فعال است.');
-            setState(() => _isLoading = false);
-            return;
-          }
-
-          final nowIso = DateTime.now().toIso8601String();
-          activeSessions[deviceId] = {
-            "login_at": activeSessions[deviceId]?['login_at'] ?? nowIso,
-            "last_seen": nowIso,
-          };
-
-          currentUserData['active_sessions'] = activeSessions;
-
-          await http.post(
-            Uri.parse("$apiBase?action=save_user"),
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode(currentUserData),
-          );
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        if (data['status'] == 'success') {
+          final userData = data['user'];
+          final String userId = userData['id'].toString();
 
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('user_id', finalUserId);
+          await prefs.setString('user_id', userId);
           await prefs.setString('device_id', deviceId);
 
           if (mounted) {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (_) => ServerListScreen(userId: finalUserId)),
+              MaterialPageRoute(builder: (_) => ServerListScreen(userId: userId)),
             );
           }
         } else {
-          _showError('نام کاربری یا رمز عبور اشتباه است.');
+          _showError(data['message'] ?? 'نام کاربری یا رمز عبور اشتباه است.');
         }
       } else {
         _showError('خطا در ارتباط با سرور.');
@@ -296,7 +233,7 @@ class ServerListScreen extends StatefulWidget {
 }
 
 class _ServerListScreenState extends State<ServerListScreen> with WidgetsBindingObserver {
-  static const String apiBase = "https://socialmedia-ad.ir/api.php";
+  static const String apiBase = "https://socialmedia-ad.ir/index.php";
 
   late V2ray flutterV2ray;
   List<dynamic> _configs = [];
