@@ -561,7 +561,9 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     } catch (_) {}
 
     final currentDeviceId = _deviceId;
-    if (currentDeviceId != null && _userData != null) {
+    // اصلاح اصلی: فقط زمانی که کاربر هنوز فعال است سشن دستگاه را از سرور پاک می‌کنیم
+    // تا وضعیت غیرفعال‌سازی توسط ادمین بازنویسی نشود.
+    if (currentDeviceId != null && _userData != null && _isTruthy(_userData!['active'])) {
       try {
         Map<String, dynamic> activeSessions = Map<String, dynamic>.from(_userData!['active_sessions'] ?? {});
         activeSessions.remove(currentDeviceId);
@@ -670,7 +672,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     });
   }
 
-  // پیاده‌سازی تست پینگ دقیق هسته (مشابه Real Delay در v2rayNG)
   Future<void> _testServerDelay(Map<String, dynamic> item) async {
     final String rawUrl = (item['config'] ?? '').toString().trim();
     final String configId = item['id']?.toString() ?? item['name']?.toString() ?? '';
@@ -756,7 +757,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         finalConfigJson = parser.getFullConfiguration();
       }
 
-      // استفاده از متد داخلی هسته برای محاسبه دقیق تاخیر (Real Delay)
       delay = await flutterV2ray.getServerDelay(config: finalConfigJson);
     } catch (_) {
       delay = -1;
