@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_v2ray/flutter_v2ray.dart';
+import 'package:flutter_v2ray_client/flutter_v2ray.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -298,7 +298,7 @@ class ServerListScreen extends StatefulWidget {
 class _ServerListScreenState extends State<ServerListScreen> with WidgetsBindingObserver {
   static const String apiBase = "https://socialmedia-ad.ir/api.php";
 
-  late FlutterV2ray flutterV2ray;
+  late V2ray flutterV2ray;
   List<dynamic> _configs = [];
   final Map<String, int> _pings = {};
   final Map<String, bool> _pingLoading = {};
@@ -316,7 +316,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   int _lastSessionDownload = 0;
   int _accumulatedUsedBytes = 0;
   String _remainingTimeText = '...';
-  String _coreVersion = '...'; // نسخه هسته ایکسری به‌روزرسانی شده
+  String _coreVersion = '26.9.9'; // نسخه آپدیت‌شده هسته ایکس‌ری
 
   Timer? _userCheckTimer;
   String? _deviceId;
@@ -386,7 +386,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   }
 
   void _initV2Ray() async {
-    flutterV2ray = FlutterV2ray(
+    flutterV2ray = V2ray(
       onStatusChanged: (status) {
         if (!mounted) return;
         final stateUpper = status.state.toUpperCase();
@@ -414,10 +414,9 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
     await flutterV2ray.initializeV2Ray();
     
-    // دریافت و به‌روزرسانی نسخه هسته ایکسری
     try {
       String version = await flutterV2ray.getCoreVersion();
-      if (mounted) {
+      if (mounted && version.isNotEmpty) {
         setState(() {
           _coreVersion = version;
         });
@@ -771,7 +770,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       final bool hasPermission = await flutterV2ray.requestPermission();
       if (hasPermission) {
         final configUrl = _cleanUrl(rawUrl);
-        V2RayURL parser = FlutterV2ray.parseFromURL(configUrl);
+        V2RayURL parser = V2ray.parseFromURL(configUrl);
 
         await flutterV2ray.startV2Ray(
           remark: selectedConfig['name'] ?? parser.remark,
