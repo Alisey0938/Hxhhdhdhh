@@ -28,7 +28,7 @@ jobs:
       - name: Create Android Platform
         run: flutter create --platforms=android --project-name xray_ultra .
 
-      - name: Patch Android Build.gradle (SDK, Namespace, Minify, ABI)
+      - name: Patch Android Build.gradle (SDK, Namespace, Minify)
         run: |
           python3 -c '
           import re
@@ -58,18 +58,6 @@ jobs:
           else:
               c = c.replace("defaultConfig {", "defaultConfig {\n        buildToolsVersion \"35.0.0\"")
 
-          # افزودن تنظیمات تفکیک معماری‌ها (ABI Split)
-          abi_config = "\n    ndk {\n        abiFilters \"arm64-v8a\", \"armeabi-v7a\"\n    }\n"
-          splits_config = "\n    splits {\n        abi {\n            enable true\n            reset ()\n            include \"arm64-v8a\", \"armeabi-v7a\"\n            universalApk true\n        }\n    }\n"
-
-          # قرار دادن تنظیمات درون بلاک android {}
-          if "splits {" not in c:
-              android_block_match = re.search(r"android\s*\{", c)
-              if android_block_match:
-                  android_end_index = android_block_match.end()
-                  # درج تنظیمات بعد از باز شدن آکولاد android {}
-                  c = c[:android_end_index] + abi_config + splits_config + c[android_end_index:]
-
           open(p, "w").write(c)
           '
 
@@ -83,8 +71,8 @@ jobs:
       - name: Generate App Icon
         run: dart run flutter_launcher_icons
 
-      - name: Build Release APK (Universal + Split ABIs)
-        run: flutter build apk --release --no-tree-shake-icons
+      - name: Build Release APK (Split per ABI)
+        run: flutter build apk --release --split-per-abi --no-tree-shake-icons
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
