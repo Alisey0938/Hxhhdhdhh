@@ -392,22 +392,18 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         final stateUpper = status.state.toUpperCase();
 
         if (stateUpper == 'CONNECTED') {
-          if (!_isConnected) {
-            setState(() {
-              _isConnected = true;
-              _isConnectingProcess = false;
-            });
-          }
+          setState(() {
+            _isConnected = true;
+            _isConnectingProcess = false;
+          });
           _calculateAndSaveTraffic(status.upload, status.download);
         } else if (stateUpper == 'DISCONNECTED' || stateUpper == 'STOPPED' || stateUpper == 'IDLE') {
-          if (_isConnected) {
-            setState(() {
-              _isConnected = false;
-              _isConnectingProcess = false;
-              _lastSessionUpload = 0;
-              _lastSessionDownload = 0;
-            });
-          }
+          setState(() {
+            _isConnected = false;
+            _isConnectingProcess = false;
+            _lastSessionUpload = 0;
+            _lastSessionDownload = 0;
+          });
         }
       },
     );
@@ -751,11 +747,9 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       setState(() => _isConnectingProcess = true);
       try {
         await flutterV2ray.stopV2Ray();
-      } catch (_) {}
-      setState(() {
-        _isConnected = false;
-        _isConnectingProcess = false;
-      });
+      } catch (_) {
+        setState(() => _isConnectingProcess = false);
+      }
       return;
     }
 
