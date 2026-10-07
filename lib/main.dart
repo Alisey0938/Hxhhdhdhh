@@ -583,91 +583,94 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     }
   }
 
-  // موتور هوشمند دو مرحله‌ای مشابه v2rayNG برای پشتیبانی صددرصدی از تمام کانفیگ‌ها
+  String _cleanUrl(String rawUrl) => rawUrl.trim();
+
   String _parseConfigToJson(String rawUrl) {
-    try {
-      rawUrl = rawUrl.trim();
-      
-      // پاکسازی و پر کردن فیلدهای خالی بدون دستکاری اطلاعات اصلی سرور
-      String cleanedUrl = rawUrl
-          .replaceAll(RegExp(r'[?&]security=(?=&|#|$)'), '&security=none')
-          .replaceAll(RegExp(r'\?security=$'), '?security=none');
+    if (rawUrl.contains('type=xhttp')) {
+      Uri uri = Uri.parse(rawUrl);
+      String host = uri.host;
+      int port = uri.port;
+      String uuid = uri.userInfo;
+      Map<String, String> qParams = uri.queryParameters;
 
-      if (!cleanedUrl.contains('encryption=')) {
-        cleanedUrl = cleanedUrl.contains('?') 
-            ? '$cleanedUrl&encryption=none' 
-            : '$cleanedUrl?encryption=none';
-      }
-
-      // تلاش اول با پارسر اصلی پکیج
-      try {
-        V2RayURL parser = V2ray.parseFromURL(cleanedUrl);
-        String jsonConfig = parser.getFullConfiguration();
-        if (jsonConfig.isNotEmpty && jsonConfig != "{}") {
-          return jsonConfig;
-        }
-      } catch (_) {}
-
-      // تلاش دوم با موتور دستی کامل برای پشتیبانی از تمام پروتکل‌ها و هدرها
-      String protocol = 'vless';
-      if (cleanedUrl.startsWith('vmess://')) protocol = 'vmess';
-      else if (cleanedUrl.startsWith('trojan://')) protocol = 'trojan';
-      else if (cleanedUrl.startsWith('ss://') || cleanedUrl.startsWith('shadowsocks://')) protocol = 'shadowsocks';
-
-      int schemeEnd = cleanedUrl.indexOf('://');
-      int atIndex = cleanedUrl.lastIndexOf('@');
-      if (schemeEnd == -1 || atIndex == -1) {
-        V2RayURL parser = V2ray.parseFromURL(rawUrl);
-        return parser.getFullConfiguration();
-      }
-
-      String userInfo = cleanedUrl.substring(schemeEnd + 3, atIndex);
-      
-      int qIndex = cleanedUrl.indexOf('?', atIndex);
-      int hashIndex = cleanedUrl.indexOf('#', atIndex);
-
-      String hostPortStr = '';
-      if (qIndex != -1) {
-        hostPortStr = cleanedUrl.substring(atIndex + 1, qIndex);
-      } else if (hashIndex != -1) {
-        hostPortStr = cleanedUrl.substring(atIndex + 1, hashIndex);
-      } else {
-        hostPortStr = cleanedUrl.substring(atIndex + 1);
-      }
-
-      String host = hostPortStr;
-      int port = 443;
-      int lastColon = hostPortStr.lastIndexOf(':');
-      if (lastColon != -1) {
-        host = hostPortStr.substring(0, lastColon);
-        port = int.tryParse(hostPortStr.substring(lastColon + 1)) ?? 443;
-      }
-
-      Map<String, String> qParams = {};
-      if (qIndex != -1) {
-        String queryStr = (hashIndex != -1 && hashIndex > qIndex) 
-            ? cleanedUrl.substring(qIndex + 1, hashIndex) 
-            : cleanedUrl.substring(qIndex + 1);
-
-        for (var param in queryStr.split('&')) {
-          var keyValue = param.split('=');
-          if (keyValue.length >= 2) {
-            qParams[keyValue[0]] = Uri.decodeComponent(keyValue.sublist(1).join('='));
-          } else if (keyValue.length == 1) {
-            qParams[keyValue[0]] = '';
-          }
-        }
-      }
-
-      String type = (qParams['type'] ?? 'tcp').toLowerCase();
-      String security = (qParams['security'] ?? 'none').toLowerCase();
-      if (security.isEmpty) security = 'none';
-      String sni = qParams['sni'] ?? qParams['host'] ?? host;
       String path = qParams['path'] ?? '/';
-      String headerType = (qParams['headerType'] ?? 'none').toLowerCase();
-      String flow = qParams['flow'] ?? '';
+      String mode = qParams['mode'] ?? 'auto';
+      String serverHost = qParams['host'] ?? host;
+      String security = qParams['security'] ?? 'none';
+      String sni = qParams['sni'] ?? serverHost;
 
-      Map<String, dynamic> configMap = {
+      Map<String, dynamic> xhttpConfig = {
+        "log": {"loglevel": "warning"},
+        "inbounds": [
+          {
+            "port": 10808,
+            "protocol": "socks",
+            "settings": {"auth": "noauth", "udp": true},
+            "sniffing": {"enabled": true, "destOverride": ["http", "tls"]}
+          }
+        ],
+        "outbounds": [
+          {
+            "protocol": "vless",
+            "settings": {
+              "vnext": [
+                {
+                  "address": host,
+                  "port": port,
+                  "users": [
+                    {
+                      "id": uuid,
+                      "encryption": "none",
+                      "flow": qParams['flow'] ?? ''
+                    }
+                  ]
+                }
+              ]
+            },
+            "streamSettings": {
+              "network": "xhttp",
+              "security": security,
+              "xhttpSettings": {
+                "path": path,
+                "host": serverHost,
+                "mode": mode
+              }
+            }
+          }
+        ]
+      };
+
+      if (security == 'tls' || security == 'xtls') {
+        xhttpConfig["outbounds"][0]["streamSettings"]["tlsSettings"] = {
+          "serverName": sni,
+          "allowInsecure": true,
+          "fingerprint": "chrome"
+        };
+      }
+
+      if (qParams.containsKey('extra')) {
+        try {
+          xhttpConfig["outbounds"][0]["streamSettings"]["xhttpSettings"]["extra"] = 
+              json.decode(qParams['extra']!);
+        } catch (_) {}
+      }
+
+      return json.encode(xhttpConfig);
+    } else if (rawUrl.contains('type=ws') || rawUrl.contains('ws://')) {
+      Uri uri = Uri.parse(rawUrl);
+      String protocol = uri.scheme.toLowerCase();
+      if (protocol.isEmpty) protocol = 'vless';
+      String host = uri.host;
+      int port = uri.port;
+      String uuid = uri.userInfo;
+      Map<String, String> qParams = uri.queryParameters;
+
+      String path = qParams['path'] ?? '/';
+      String wsHost = qParams['host'] ?? host;
+      String security = qParams['security'] ?? 'none';
+      String sni = qParams['sni'] ?? wsHost;
+
+      Map<String, dynamic> wsConfig = {
         "log": {"loglevel": "warning"},
         "inbounds": [
           {
@@ -685,16 +688,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
                 {
                   "address": host,
                   "port": port,
-                  "password": userInfo
-                }
-              ]
-            } : protocol == 'shadowsocks' ? {
-              "servers": [
-                {
-                  "address": host,
-                  "port": port,
-                  "password": userInfo,
-                  "method": qParams['method'] ?? 'aes-256-gcm'
+                  "password": uuid
                 }
               ]
             } : {
@@ -704,92 +698,49 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
                   "port": port,
                   "users": [
                     protocol == 'vmess' ? {
-                      "id": userInfo,
-                      "alterId": int.tryParse(qParams['aid'] ?? '0') ?? 0,
-                      "security": qParams['encryption'] ?? 'auto'
+                      "id": uuid,
+                      "alterId": 0,
+                      "security": "auto"
                     } : {
-                      "id": userInfo,
-                      "encryption": qParams['encryption'] ?? 'none',
-                      "flow": flow
+                      "id": uuid,
+                      "encryption": "none",
+                      "flow": ""
                     }
                   ]
                 }
               ]
             },
             "streamSettings": {
-              "network": type,
+              "network": "ws",
               "security": security,
+              "wsSettings": {
+                "path": path,
+                "headers": {
+                  "Host": wsHost
+                }
+              }
             }
           }
         ]
       };
 
-      var streamSettings = configMap["outbounds"][0]["streamSettings"] as Map<String, dynamic>;
-
-      if (type == 'ws') {
-        streamSettings["wsSettings"] = {
-          "path": path,
-          "headers": {
-            "Host": qParams['host'] ?? host
-          }
-        };
-      } else if (type == 'xhttp') {
-        streamSettings["xhttpSettings"] = {
-          "path": path,
-          "host": qParams['host'] ?? host,
-          "mode": qParams['mode'] ?? 'auto'
-        };
-        if (qParams.containsKey('extra')) {
-          try {
-            streamSettings["xhttpSettings"]["extra"] = json.decode(qParams['extra']!);
-          } catch (_) {}
-        }
-      } else if (type == 'grpc') {
-        streamSettings["grpcSettings"] = {
-          "serviceName": qParams['serviceName'] ?? qParams['path'] ?? '',
-          "multiMode": qParams['mode'] == 'multi'
-        };
-      } else if (type == 'tcp' && headerType == 'http') {
-        streamSettings["tcpSettings"] = {
-          "header": {
-            "type": "http",
-            "request": {
-              "path": [path],
-              "headers": {
-                "Host": [qParams['host'] ?? host]
-              }
-            }
-          }
-        };
-      }
-
       if (security == 'tls' || security == 'xtls') {
-        streamSettings["tlsSettings"] = {
+        wsConfig["outbounds"][0]["streamSettings"]["tlsSettings"] = {
           "serverName": sni,
-          "allowInsecure": qParams['allowInsecure'] == '1' || qParams['insecure'] == '1' || true,
-          "fingerprint": qParams['fp'] ?? 'chrome'
-        };
-      } else if (security == 'reality') {
-        streamSettings["realitySettings"] = {
-          "serverName": sni,
-          "publicKey": qParams['pbk'] ?? '',
-          "shortId": qParams['sid'] ?? '',
-          "fingerprint": qParams['fp'] ?? 'chrome',
-          "spiderX": qParams['spx'] ?? ''
+          "allowInsecure": true,
+          "fingerprint": "chrome"
         };
       }
 
-      return json.encode(configMap);
-    } catch (_) {
-      try {
-        V2RayURL parser = V2ray.parseFromURL(rawUrl);
-        return parser.getFullConfiguration();
-      } catch (e) {
-        return "{}";
-      }
+      return json.encode(wsConfig);
+    } else {
+      final configUrl = _cleanUrl(rawUrl);
+      V2RayURL parser = V2ray.parseFromURL(configUrl);
+      return parser.getFullConfiguration();
     }
   }
 
+  // بهینه‌سازی شده برای تست پینگ همزمان و سریع‌تر تمام سرورها
   Future<void> _testAllPings() async {
     if (_isTestingAllPings || _configs.isEmpty) return;
 
@@ -806,7 +757,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       });
     }
 
-    // تست همزمان و سریع پینگ تمام سرورها
+    // اجرای همزمان (Parallel) تست پینگ برای تمامی سرورها به منظور افزایش سرعت چشمگیر
     await Future.wait(_configs.map((item) async {
       if (!mounted) return;
       await _testServerDelay(item);
@@ -892,12 +843,11 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         String remark = selectedConfig['name'] ?? 'Xray Server';
 
         try {
-          String cleanedUrl = rawUrl.trim()
-              .replaceAll(RegExp(r'[?&]security=(?=&|#|$)'), '&security=none')
-              .replaceAll(RegExp(r'\?security=$'), '?security=none');
-          V2RayURL parser = V2ray.parseFromURL(cleanedUrl);
-          if (parser.remark.isNotEmpty) {
-            remark = parser.remark;
+          if (!rawUrl.contains('type=xhttp') && !rawUrl.contains('type=ws') && !rawUrl.contains('ws://')) {
+            V2RayURL parser = V2ray.parseFromURL(_cleanUrl(rawUrl));
+            if (parser.remark.isNotEmpty) {
+              remark = parser.remark;
+            }
           }
         } catch (_) {}
 
