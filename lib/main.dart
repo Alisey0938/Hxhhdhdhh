@@ -583,164 +583,34 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     }
   }
 
-  String _cleanUrl(String rawUrl) => rawUrl.trim();
-
+  // استفاده از پارسر بومی و قدرتمند پکیج با پاکسازی هوشمند لینک‌ها (مشابه v2rayNG)
   String _parseConfigToJson(String rawUrl) {
-    if (rawUrl.contains('type=xhttp')) {
-      Uri uri = Uri.parse(rawUrl);
-      String host = uri.host;
-      int port = uri.port;
-      String uuid = uri.userInfo;
-      Map<String, String> qParams = uri.queryParameters;
+    try {
+      rawUrl = rawUrl.trim();
+      
+      // رفع مشکل مقدار خالی security در بعضی لینک‌ها
+      String cleanedUrl = rawUrl
+          .replaceAll(RegExp(r'[?&]security=(?=&|#|$)'), '&security=none')
+          .replaceAll(RegExp(r'\?security=$'), '?security=none');
 
-      String path = qParams['path'] ?? '/';
-      String mode = qParams['mode'] ?? 'auto';
-      String serverHost = qParams['host'] ?? host;
-      String security = qParams['security'] ?? 'none';
-      String sni = qParams['sni'] ?? serverHost;
-
-      Map<String, dynamic> xhttpConfig = {
-        "log": {"loglevel": "warning"},
-        "inbounds": [
-          {
-            "port": 10808,
-            "protocol": "socks",
-            "settings": {"auth": "noauth", "udp": true},
-            "sniffing": {"enabled": true, "destOverride": ["http", "tls"]}
-          }
-        ],
-        "outbounds": [
-          {
-            "protocol": "vless",
-            "settings": {
-              "vnext": [
-                {
-                  "address": host,
-                  "port": port,
-                  "users": [
-                    {
-                      "id": uuid,
-                      "encryption": "none",
-                      "flow": qParams['flow'] ?? ''
-                    }
-                  ]
-                }
-              ]
-            },
-            "streamSettings": {
-              "network": "xhttp",
-              "security": security,
-              "xhttpSettings": {
-                "path": path,
-                "host": serverHost,
-                "mode": mode
-              }
-            }
-          }
-        ]
-      };
-
-      if (security == 'tls' || security == 'xtls') {
-        xhttpConfig["outbounds"][0]["streamSettings"]["tlsSettings"] = {
-          "serverName": sni,
-          "allowInsecure": true,
-          "fingerprint": "chrome"
-        };
+      if (!cleanedUrl.contains('encryption=')) {
+        cleanedUrl = cleanedUrl.contains('?') 
+            ? '$cleanedUrl&encryption=none' 
+            : '$cleanedUrl?encryption=none';
       }
 
-      if (qParams.containsKey('extra')) {
-        try {
-          xhttpConfig["outbounds"][0]["streamSettings"]["xhttpSettings"]["extra"] = 
-              json.decode(qParams['extra']!);
-        } catch (_) {}
-      }
-
-      return json.encode(xhttpConfig);
-    } else if (rawUrl.contains('type=ws') || rawUrl.contains('ws://')) {
-      Uri uri = Uri.parse(rawUrl);
-      String protocol = uri.scheme.toLowerCase();
-      if (protocol.isEmpty) protocol = 'vless';
-      String host = uri.host;
-      int port = uri.port;
-      String uuid = uri.userInfo;
-      Map<String, String> qParams = uri.queryParameters;
-
-      String path = qParams['path'] ?? '/';
-      String wsHost = qParams['host'] ?? host;
-      String security = qParams['security'] ?? 'none';
-      String sni = qParams['sni'] ?? wsHost;
-
-      Map<String, dynamic> wsConfig = {
-        "log": {"loglevel": "warning"},
-        "inbounds": [
-          {
-            "port": 10808,
-            "protocol": "socks",
-            "settings": {"auth": "noauth", "udp": true},
-            "sniffing": {"enabled": true, "destOverride": ["http", "tls"]}
-          }
-        ],
-        "outbounds": [
-          {
-            "protocol": protocol == 'ss' ? 'shadowsocks' : protocol,
-            "settings": protocol == 'trojan' ? {
-              "servers": [
-                {
-                  "address": host,
-                  "port": port,
-                  "password": uuid
-                }
-              ]
-            } : {
-              "vnext": [
-                {
-                  "address": host,
-                  "port": port,
-                  "users": [
-                    protocol == 'vmess' ? {
-                      "id": uuid,
-                      "alterId": 0,
-                      "security": "auto"
-                    } : {
-                      "id": uuid,
-                      "encryption": "none",
-                      "flow": ""
-                    }
-                  ]
-                }
-              ]
-            },
-            "streamSettings": {
-              "network": "ws",
-              "security": security,
-              "wsSettings": {
-                "path": path,
-                "headers": {
-                  "Host": wsHost
-                }
-              }
-            }
-          }
-        ]
-      };
-
-      if (security == 'tls' || security == 'xtls') {
-        wsConfig["outbounds"][0]["streamSettings"]["tlsSettings"] = {
-          "serverName": sni,
-          "allowInsecure": true,
-          "fingerprint": "chrome"
-        };
-      }
-
-      return json.encode(wsConfig);
-    } else {
-      final configUrl = _cleanUrl(rawUrl);
-      V2RayURL parser = V2ray.parseFromURL(configUrl);
+      V2RayURL parser = V2ray.parseFromURL(cleanedUrl);
       return parser.getFullConfiguration();
+    } catch (_) {
+      try {
+        V2RayURL parser = V2ray.parseFromURL(rawUrl.trim());
+        return parser.getFullConfiguration();
+      } catch (e) {
+        return "{}";
+      }
     }
   }
 
-  // بهینه‌سازی شده برای تست پینگ همزمان و سریع‌تر تمام سرورها
   Future<void> _testAllPings() async {
     if (_isTestingAllPings || _configs.isEmpty) return;
 
@@ -757,7 +627,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       });
     }
 
-    // اجرای همزمان (Parallel) تست پینگ برای تمامی سرورها به منظور افزایش سرعت چشمگیر
+    // تست همزمان و سریع تمامی سرورها
     await Future.wait(_configs.map((item) async {
       if (!mounted) return;
       await _testServerDelay(item);
@@ -843,11 +713,12 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         String remark = selectedConfig['name'] ?? 'Xray Server';
 
         try {
-          if (!rawUrl.contains('type=xhttp') && !rawUrl.contains('type=ws') && !rawUrl.contains('ws://')) {
-            V2RayURL parser = V2ray.parseFromURL(_cleanUrl(rawUrl));
-            if (parser.remark.isNotEmpty) {
-              remark = parser.remark;
-            }
+          String cleanedUrl = rawUrl.trim()
+              .replaceAll(RegExp(r'[?&]security=(?=&|#|$)'), '&security=none')
+              .replaceAll(RegExp(r'\?security=$'), '?security=none');
+          V2RayURL parser = V2ray.parseFromURL(cleanedUrl);
+          if (parser.remark.isNotEmpty) {
+            remark = parser.remark;
           }
         } catch (_) {}
 
