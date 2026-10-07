@@ -54,6 +54,23 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
+      - name: Download & Inject Latest Xray Core
+        run: |
+          # دانلود آخرین نسخه هسته ایکس‌ری از ریپازیتوری رسمی
+          mkdir -p xray_temp
+          cd xray_temp
+          curl -sL https://github.com/XTLS/Xray-core/releases/latest/download/Xray-android-arm64-v8a.zip -o xray.zip
+          unzip -q xray.zip
+          
+          # ساخت پوشه jniLibs در پروژه برای قرار دادن کتابخانه بومی
+          mkdir -p ../android/app/src/main/jniLibs/arm64-v8a/
+          # انتقال یا تنظیم هسته جدید (اگر پکیج از libxray پشتیبانی کند)
+          if [ -f "xray" ]; then
+            cp xray ../android/app/src/main/jniLibs/arm64-v8a/libxray.so || true
+          fi
+          cd ..
+          rm -rf xray_temp
+
       - name: Generate App Icon
         run: dart run flutter_launcher_icons
 
