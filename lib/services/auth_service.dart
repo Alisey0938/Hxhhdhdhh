@@ -1,14 +1,14 @@
 import 'dart:async';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_v2ray/flutter_v2ray.dart';
+import 'package:flutter_v2ray_client/flutter_v2ray.dart';
 
 class AuthService {
   static final DatabaseReference _db = FirebaseDatabase.instance.ref();
   static StreamSubscription<DatabaseEvent>? _userSubscription;
 
   /// شروع شنود لحظه‌ای وضعیت کاربر
-  static void startUserListener(BuildContext context, String userId, FlutterV2ray v2rayClient) {
+  static void startUserListener(BuildContext context, String userId, V2ray v2rayClient) {
     _userSubscription?.cancel();
 
     _userSubscription = _db.child('users/$userId').onValue.listen((event) async {
@@ -32,7 +32,7 @@ class AuthService {
   }
 
   /// خروج اجباری و قطع وی‌پی‌ان
-  static Future<void> _forceLogout(BuildContext context, FlutterV2ray v2rayClient, String message) async {
+  static Future<void> _forceLogout(BuildContext context, V2ray v2rayClient, String message) async {
     stopUserListener();
 
     try {
@@ -53,7 +53,7 @@ class AuthService {
   }
 
   /// خروج دستی
-  static Future<void> logoutManual(BuildContext context, FlutterV2ray v2rayClient) async {
+  static Future<void> logoutManual(BuildContext context, V2ray v2rayClient) async {
     stopUserListener();
 
     try {
