@@ -642,7 +642,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   String _cleanUrl(String rawUrl) => rawUrl.trim();
 
-  // متد جامع برای تبدیل انواع لینک‌ها (Xhttp، وب‌سوکت WS و استاندارد) به JSON معتبر هسته Xray
+  // متد جامع برای تبدیل انواع لینک‌ها (Xhttp، وب‌سوکت WS و استاندارد) به JSON معتبر هسته Xray v26.9.9
   String _parseConfigToJson(String rawUrl) {
     if (rawUrl.contains('type=xhttp')) {
       Uri uri = Uri.parse(rawUrl);
@@ -654,7 +654,8 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       String path = qParams['path'] ?? '/';
       String mode = qParams['mode'] ?? 'auto';
       String serverHost = qParams['host'] ?? host;
-      String security = qParams['security'] ?? '';
+      String security = qParams['security'] ?? 'none';
+      String sni = qParams['sni'] ?? serverHost;
 
       Map<String, dynamic> xhttpConfig = {
         "log": {"loglevel": "warning"},
@@ -678,7 +679,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
                     {
                       "id": uuid,
                       "encryption": "none",
-                      "flow": ""
+                      "flow": qParams['flow'] ?? ''
                     }
                   ]
                 }
@@ -686,7 +687,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             },
             "streamSettings": {
               "network": "xhttp",
-              "security": security.isEmpty ? "none" : security,
+              "security": security,
               "xhttpSettings": {
                 "path": path,
                 "host": serverHost,
@@ -696,6 +697,14 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
           }
         ]
       };
+
+      if (security == 'tls' || security == 'xtls') {
+        xhttpConfig["outbounds"][0]["streamSettings"]["tlsSettings"] = {
+          "serverName": sni,
+          "allowInsecure": true,
+          "fingerprint": "chrome"
+        };
+      }
 
       if (qParams.containsKey('extra')) {
         try {
