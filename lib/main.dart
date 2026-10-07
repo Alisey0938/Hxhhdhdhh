@@ -349,6 +349,19 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       notificationIconResourceName: "ic_launcher",
     );
     
+    // بررسی وضعیت واقعی هسته برای همگام‌سازی استیت دکمه در شروع اپ
+    try {
+      bool coreConnected = await flutterV2ray.V2RayStatus();
+      if (mounted) {
+        setState(() {
+          _isConnected = coreConnected;
+          if (!coreConnected) {
+            _isConnectingProcess = false;
+          }
+        });
+      }
+    } catch (_) {}
+
     try {
       String version = await flutterV2ray.getCoreVersion();
       if (mounted && version.isNotEmpty) {
@@ -740,7 +753,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     }
   }
 
-  // بهینه‌سازی شده برای تست پینگ همزمان و سریع‌تر تمام سرورها
   Future<void> _testAllPings() async {
     if (_isTestingAllPings || _configs.isEmpty) return;
 
@@ -757,7 +769,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       });
     }
 
-    // اجرای همزمان (Parallel) تست پینگ برای تمامی سرورها به منظور افزایش سرعت چشمگیر
     await Future.wait(_configs.map((item) async {
       if (!mounted) return;
       await _testServerDelay(item);
@@ -814,17 +825,30 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   }
 
   Future<void> _toggleMainConnection() async {
-    if (_isConnectingProcess || _selectedConfigId == null) return;
+    if (_isConnectingProcess) return;
 
-    if (_isConnected) {
+    bool actualCoreStatus = false;
+    try {
+      actualCoreStatus = await flutterV2ray.V2RayStatus();
+    } catch (_) {}
+
+    if (_isConnected || actualCoreStatus) {
       setState(() => _isConnectingProcess = true);
       try {
         await flutterV2ray.stopV2Ray();
-      } catch (_) {
-        setState(() => _isConnectingProcess = false);
+      } catch (_) {}
+
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (mounted) {
+        setState(() {
+          _isConnected = false;
+          _isConnectingProcess = false;
+        });
       }
       return;
     }
+
+    if (_selectedConfigId == null) return;
 
     final selectedConfig = _configs.firstWhere(
       (c) => (c['id']?.toString() ?? c['name']) == _selectedConfigId,
@@ -863,7 +887,10 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('خطا در اتصال: $e'), backgroundColor: Colors.redAccent),
       );
-      setState(() => _isConnectingProcess = false);
+      setState(() {
+        _isConnectingProcess = false;
+        _isConnected = false;
+      });
     }
   }
 
