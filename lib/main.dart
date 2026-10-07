@@ -92,7 +92,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  // آپدیت شده به index.php برای سازگاری کامل با سرور
   static const String apiBase = "https://socialmedia-ad.ir/index.php";
 
   Future<String> _getDeviceId() async {
@@ -741,6 +740,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     }
   }
 
+  // بهینه‌سازی شده برای تست پینگ همزمان و سریع‌تر تمام سرورها
   Future<void> _testAllPings() async {
     if (_isTestingAllPings || _configs.isEmpty) return;
 
@@ -757,10 +757,11 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       });
     }
 
-    for (final item in _configs) {
-      if (!mounted) break;
+    // اجرای همزمان (Parallel) تست پینگ برای تمامی سرورها به منظور افزایش سرعت چشمگیر
+    await Future.wait(_configs.map((item) async {
+      if (!mounted) return;
       await _testServerDelay(item);
-    }
+    }));
 
     if (!mounted) return;
 
