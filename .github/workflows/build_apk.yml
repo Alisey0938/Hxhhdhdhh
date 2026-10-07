@@ -25,25 +25,58 @@ jobs:
           flutter-version: '3.24.5'
           channel: 'stable'
 
-      - name: Create Android Platform & Patch SDK & Namespace
+      - name: Create Android Platform & Patch SDK & Namespace & Enable Minification & ABI Split
         run: |
+          # ایجاد پلتفرم اندروید (این فایل build.gradle را می‌سازد)
           flutter create --platforms=android --project-name xray_ultra .
+          
+          # اعمال تمامی تنظیمات مهم در یک مرحله با پایتون
           python3 -c '
           import re
           p = "android/app/build.gradle"
           c = open(p).read()
+          
+          # تنظیمات Compile/Target SDK
           c = re.sub(r"compileSdk\s+.*", "compileSdk 35", c)
           c = re.sub(r"targetSdk\s+.*", "targetSdk 35", c)
           c = re.sub(r"compileSdkVersion\s+.*", "compileSdkVersion 35", c)
           c = re.sub(r"targetSdkVersion\s+.*", "targetSdkVersion 35", c)
-          c = c.replace("isMinifyEnabled", "minifyEnabled")
-          c = c.replace("isShrinkResources", "shrinkResources")
+          
+          # فعال‌سازی فشرده‌سازی کدها برای کاهش حجم
+          if "minifyEnabled" not in c:
+              c = re.sub(r"release\s*\{", "release {\n            minifyEnabled true\n            shrinkResources true", c)
+          else:
+            c = c.replace("minifyEnabled false", "minifyEnabled true")
+            c = c.replace("shrinkResources false", "shrinkResources true")
+
+          # تنظیم Namespace
           if "namespace" not in c:
               c = c.replace("android {", "android {\n    namespace \"com.example.xray_ultra\"")
+              
+          # تنظیم Build Tools Version
           if "buildToolsVersion" in c:
               c = re.sub(r"buildToolsVersion\s+\"[^\"]+\"", "buildToolsVersion \"35.0.0\"", c)
           else:
               c = c.replace("defaultConfig {", "defaultConfig {\n        buildToolsVersion \"35.0.0\"")
+
+          # افزودن تنظیمات تفکیک معماری‌ها (ABI Split)
+          abi_config = """
+        ndk {
+            abiFilters "arm64-v8a", "armeabi-v7a"
+        }
+    }
+    splits {
+        abi {
+            enable true
+            reset ()
+            include "arm64-v8a", "armeabi-v7a"
+            universalApk true
+        }
+"""
+          # قرار دادن تنظیمات ABI درون بلاک android {}
+          if "splits {" not in c:
+               c = c.replace("defaultConfig {", abi_config + "        defaultConfig {")
+          
           open(p, "w").write(c)
           '
 
@@ -57,8 +90,8 @@ jobs:
       - name: Generate App Icon
         run: dart run flutter_launcher_icons
 
-      - name: Build Release APK (Split per ABI)
-        run: flutter build apk --release --split-per-abi --no-tree-shake-icons
+      - name: Build Release APK (Universal + Split ABIs)
+        run: flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
