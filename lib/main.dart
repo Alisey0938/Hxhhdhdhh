@@ -642,7 +642,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   String _cleanUrl(String rawUrl) => rawUrl.trim();
 
-  // متد جامع برای تبدیل انواع لینک‌ها (Xhttp، وب‌سوکت WS و استاندارد) به JSON معتبر هسته Xray v26.9.9
+  // پارسر جامع و بی‌نقص برای انواع کانفیگ‌ها (Xhttp، Websocket، و استاندارد) جهت سازگاری کامل با هسته 26.9.9
   String _parseConfigToJson(String rawUrl) {
     if (rawUrl.contains('type=xhttp')) {
       Uri uri = Uri.parse(rawUrl);
