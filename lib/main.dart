@@ -349,19 +349,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       notificationIconResourceName: "ic_launcher",
     );
     
-    // بررسی وضعیت واقعی هسته برای همگام‌سازی استیت دکمه در شروع اپ
-    try {
-      bool coreConnected = await flutterV2ray.V2RayStatus();
-      if (mounted) {
-        setState(() {
-          _isConnected = coreConnected;
-          if (!coreConnected) {
-            _isConnectingProcess = false;
-          }
-        });
-      }
-    } catch (_) {}
-
     try {
       String version = await flutterV2ray.getCoreVersion();
       if (mounted && version.isNotEmpty) {
@@ -827,23 +814,12 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   Future<void> _toggleMainConnection() async {
     if (_isConnectingProcess) return;
 
-    bool actualCoreStatus = false;
-    try {
-      actualCoreStatus = await flutterV2ray.V2RayStatus();
-    } catch (_) {}
-
-    if (_isConnected || actualCoreStatus) {
+    if (_isConnected) {
       setState(() => _isConnectingProcess = true);
       try {
         await flutterV2ray.stopV2Ray();
-      } catch (_) {}
-
-      await Future.delayed(const Duration(milliseconds: 400));
-      if (mounted) {
-        setState(() {
-          _isConnected = false;
-          _isConnectingProcess = false;
-        });
+      } catch (_) {
+        setState(() => _isConnectingProcess = false);
       }
       return;
     }
