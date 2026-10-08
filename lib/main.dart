@@ -244,7 +244,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   bool _isConnectingProcess = false;
   String? _selectedConfigId;
   bool _isConnected = false;
-  bool _userWantsDisconnect = false; // پرچم جدید برای جلوگیری از بازگشت خودکار وضعیت اتصال
+  bool _userWantsDisconnect = false;
 
   Map<String, dynamic>? _userData;
   Map<String, dynamic>? _announcementData;
@@ -329,7 +329,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         final stateUpper = status.state.toUpperCase();
 
         if (stateUpper == 'CONNECTED') {
-          // اگر کاربر خودش درخواست قطع نداده باشد، اتصال را اعمال می‌کنیم
           if (!_userWantsDisconnect) {
             setState(() {
               _isConnected = true;
@@ -343,7 +342,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             _isConnectingProcess = false;
             _lastSessionUpload = 0;
             _lastSessionDownload = 0;
-            _userWantsDisconnect = false; // بازنشانی پرچم پس از قطع کامل
+            _userWantsDisconnect = false;
           });
         }
       },
@@ -601,8 +600,28 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       String path = qParams['path'] ?? '/';
       String mode = qParams['mode'] ?? 'auto';
       String serverHost = qParams['host'] ?? host;
-      String security = qParams['security'] ?? 'none';
+      String security = qParams['security'] ?? 'tls';
       String sni = qParams['sni'] ?? serverHost;
+      String fingerprint = qParams['fp'] ?? qParams['fingerprint'] ?? 'chrome';
+      String alpnStr = qParams['alpn'] ?? 'h2';
+
+      List<String> alpns = alpnStr.contains(',') 
+          ? alpnStr.split(',').map((e) => e.trim()).toList() 
+          : [alpnStr];
+
+      Map<String, dynamic> xhttpSettings = {
+        "path": path,
+        "host": serverHost,
+        "mode": mode
+      };
+
+      if (qParams.containsKey('extra')) {
+        try {
+          xhttpSettings["extra"] = json.decode(qParams['extra']!);
+        } catch (_) {}
+      } else if (qParams.containsKey('xPaddingBytes')) {
+        xhttpSettings["extra"] = {"xPaddingBytes": qParams['xPaddingBytes']};
+      }
 
       Map<String, dynamic> xhttpConfig = {
         "log": {"loglevel": "warning"},
@@ -635,11 +654,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             "streamSettings": {
               "network": "xhttp",
               "security": security,
-              "xhttpSettings": {
-                "path": path,
-                "host": serverHost,
-                "mode": mode
-              }
+              "xhttpSettings": xhttpSettings
             }
           }
         ]
@@ -649,15 +664,9 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         xhttpConfig["outbounds"][0]["streamSettings"]["tlsSettings"] = {
           "serverName": sni,
           "allowInsecure": true,
-          "fingerprint": "chrome"
+          "fingerprint": fingerprint,
+          "alpn": alpns
         };
-      }
-
-      if (qParams.containsKey('extra')) {
-        try {
-          xhttpConfig["outbounds"][0]["streamSettings"]["xhttpSettings"]["extra"] = 
-              json.decode(qParams['extra']!);
-        } catch (_) {}
       }
 
       return json.encode(xhttpConfig);
@@ -819,10 +828,9 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   Future<void> _toggleMainConnection() async {
     if (_isConnectingProcess) return;
 
-    // قانون قطعی: با اولین لمس در حالت اتصال، فوراً وضعیت کاملاً قطع شده و قفل می‌شود
     if (_isConnected) {
       setState(() {
-        _userWantsDisconnect = true; // جلوگیری از بازگشت وضعیت توسط فیدبک‌های ناهمگام
+        _userWantsDisconnect = true;
         _isConnected = false;
         _isConnectingProcess = true;
       });
