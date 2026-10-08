@@ -1191,12 +1191,12 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             ),
             InkWell(
               onTap: _isTestingAllPings ? null : _testAllPings,
-              child: Column(
-                mainAxisAlignment: MainDataFrameColumn.center,
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.bolt, color: _isTestingAllPings ? Colors.amber : Colors.white54, size: 20),
-                  const SizedBox(height: 2),
-                  Text(_isTestingAllPings ? 'Testing...' : 'Test', style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                  Icon(Icons.bolt, color: Colors.white54, size: 20),
+                  SizedBox(height: 2),
+                  Text('Test', style: TextStyle(color: Colors.white54, fontSize: 10)),
                 ],
               ),
             ),
