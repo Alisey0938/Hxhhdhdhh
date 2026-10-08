@@ -244,6 +244,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   bool _isConnectingProcess = false;
   String? _selectedConfigId;
   bool _isConnected = false;
+  bool _userWantsDisconnect = false; // پرچم جدید برای جلوگیری از بازگشت خودکار وضعیت اتصال
 
   Map<String, dynamic>? _userData;
   Map<String, dynamic>? _announcementData;
@@ -327,20 +328,23 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         if (!mounted) return;
         final stateUpper = status.state.toUpperCase();
 
-        // اگر سیستم به طور خودکار متصل شد و کاربر در حال قطع کردن دستی نبود
-        if (stateUpper == 'CONNECTED' && !_isConnectingProcess) {
-          setState(() {
-            _isConnected = true;
-          });
-          _calculateAndSaveTraffic(status.upload, status.download);
-        } else if (stateUpper == 'DISCONNECTED' || stateUpper == 'STOPPED' || stateUpper == 'IDLE') {
-          if (!_isConnectingProcess) {
+        if (stateUpper == 'CONNECTED') {
+          // اگر کاربر خودش درخواست قطع نداده باشد، اتصال را اعمال می‌کنیم
+          if (!_userWantsDisconnect) {
             setState(() {
-              _isConnected = false;
-              _lastSessionUpload = 0;
-              _lastSessionDownload = 0;
+              _isConnected = true;
+              _isConnectingProcess = false;
             });
+            _calculateAndSaveTraffic(status.upload, status.download);
           }
+        } else if (stateUpper == 'DISCONNECTED' || stateUpper == 'STOPPED' || stateUpper == 'IDLE') {
+          setState(() {
+            _isConnected = false;
+            _isConnectingProcess = false;
+            _lastSessionUpload = 0;
+            _lastSessionDownload = 0;
+            _userWantsDisconnect = false; // بازنشانی پرچم پس از قطع کامل
+          });
         }
       },
     );
@@ -815,9 +819,10 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   Future<void> _toggleMainConnection() async {
     if (_isConnectingProcess) return;
 
-    // قانون قطعی: هر بار که دکمه در حالت اتصال است فشرده شود، سریعاً قطع و خاکستری می‌شود
+    // قانون قطعی: با اولین لمس در حالت اتصال، فوراً وضعیت کاملاً قطع شده و قفل می‌شود
     if (_isConnected) {
       setState(() {
+        _userWantsDisconnect = true; // جلوگیری از بازگشت وضعیت توسط فیدبک‌های ناهمگام
         _isConnected = false;
         _isConnectingProcess = true;
       });
@@ -846,7 +851,10 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     );
 
     final String rawUrl = (selectedConfig['config'] ?? '').toString();
-    setState(() => _isConnectingProcess = true);
+    setState(() {
+      _userWantsDisconnect = false;
+      _isConnectingProcess = true;
+    });
 
     try {
       final bool hasPermission = await flutterV2ray.requestPermission();
@@ -869,7 +877,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
           proxyOnly: false,
         );
 
-        if (mounted) {
+        if (mounted && !_userWantsDisconnect) {
           setState(() {
             _isConnected = true;
             _isConnectingProcess = false;
