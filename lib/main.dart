@@ -244,7 +244,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   bool _isConnectingProcess = false;
   String? _selectedConfigId;
   bool _isConnected = false;
-  bool _userWantsDisconnect = false; // پرچم جدید برای جلوگیری از بازگشت خودکار وضعیت اتصال
+  bool _userWantsDisconnect = false;
 
   Map<String, dynamic>? _userData;
   Map<String, dynamic>? _announcementData;
@@ -329,7 +329,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         final stateUpper = status.state.toUpperCase();
 
         if (stateUpper == 'CONNECTED') {
-          // اگر کاربر خودش درخواست قطع نداده باشد، اتصال را اعمال می‌کنیم
           if (!_userWantsDisconnect) {
             setState(() {
               _isConnected = true;
@@ -343,7 +342,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             _isConnectingProcess = false;
             _lastSessionUpload = 0;
             _lastSessionDownload = 0;
-            _userWantsDisconnect = false; // بازنشانی پرچم پس از قطع کامل
+            _userWantsDisconnect = false;
           });
         }
       },
@@ -405,20 +404,37 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             };
             data['active_sessions'] = activeSessions;
             
-            await http.post(
-              Uri.parse("$apiBase?action=update_traffic"),
-              headers: {'Content-Type': 'application/json'},
-              body: json.encode({
-                "id": widget.userId,
-                "used_bytes": _accumulatedUsedBytes,
-                "active_sessions": activeSessions,
-              }),
-            );
+            // ارسال ترافیک فقط برای کاربران دارای محدودیت حجمی
+            double maxGb = double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0.0;
+            if (maxGb > 0) {
+              await http.post(
+                Uri.parse("$apiBase?action=update_traffic"),
+                headers: {'Content-Type': 'application/json'},
+                body: json.encode({
+                  "id": widget.userId,
+                  "used_bytes": _accumulatedUsedBytes,
+                  "active_sessions": activeSessions,
+                }),
+              );
+            } else {
+              await http.post(
+                Uri.parse("$apiBase?action=update_traffic"),
+                headers: {'Content-Type': 'application/json'},
+                body: json.encode({
+                  "id": widget.userId,
+                  "active_sessions": activeSessions,
+                }),
+              );
+            }
           }
         }
 
         _userData = Map<String, dynamic>.from(data);
-        _accumulatedUsedBytes = int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
+        
+        int serverUsedBytes = int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
+        if (_accumulatedUsedBytes < serverUsedBytes) {
+          _accumulatedUsedBytes = serverUsedBytes;
+        }
 
         if (data['expire_at'] != null && data['expire_at'].toString().isNotEmpty) {
           try {
@@ -464,6 +480,10 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   void _calculateAndSaveTraffic(int currentUpload, int currentDownload) async {
     if (!_isConnected || _userData == null) return;
 
+    // بررسی حجم نامحدود: برای کاربران نامحدود (max_volume_gb <= 0) نیازی به محاسبه و ارسال ترافیک نیست
+    double maxGb = double.tryParse(_userData!['max_volume_gb']?.toString() ?? '0') ?? 0.0;
+    if (maxGb <= 0) return;
+
     if (_lastSessionUpload == 0 && currentUpload > 0) {
       _lastSessionUpload = currentUpload;
     }
@@ -503,7 +523,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         );
       } catch (_) {}
 
-      double maxGb = double.tryParse(_userData!['max_volume_gb']?.toString() ?? '0') ?? 0.0;
       if (maxGb > 0 && (_accumulatedUsedBytes / (1024 * 1024 * 1024)) >= maxGb) {
         _logoutUser('حجم مجاز شما به پایان رسید.');
       }
@@ -590,47 +609,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   String _cleanUrl(String rawUrl) => rawUrl.trim();
 
-  bool _queryBool(Map<String, String> q, List<String> keys, {bool defaultValue = false}) {
-    for (final key in keys) {
-      final value = q[key]?.trim().toLowerCase();
-      if (value == '1' || value == 'true' || value == 'yes') return true;
-      if (value == '0' || value == 'false' || value == 'no') return false;
-    }
-    return defaultValue;
-  }
-
-  dynamic _queryJson(Map<String, String> q, String key) {
-    final value = q[key];
-    if (value == null || value.trim().isEmpty) return null;
-    try {
-      return json.decode(value);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  List<String>? _queryList(Map<String, String> q, String key) {
-    final value = q[key];
-    if (value == null || value.trim().isEmpty) return null;
-    return value
-        .split(',')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-  }
-
-  String _queryFirst(Map<String, String> q, List<String> keys, [String fallback = '']) {
-    for (final key in keys) {
-      final value = q[key];
-      if (value != null && value.isNotEmpty) return value;
-    }
-    return fallback;
-  }
-
-  /// Decodes a URL query string without treating '+' as a space.
-  ///
-  /// This is important for modern Xray share links because values such as
-  /// ECH DNS specifications may legitimately contain '+'.
   Map<String, String> _rawQueryParametersPreservePlus(Uri uri) {
     final result = <String, String>{};
     final raw = uri.hasQuery ? uri.query : '';
@@ -646,11 +624,9 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
       try {
         final key = Uri.decodeComponent(rawKey);
-        // Deliberately do NOT convert '+' to a space.
         final value = Uri.decodeComponent(rawValue);
         result[key] = value;
       } catch (_) {
-        // Keep a malformed parameter from breaking an otherwise valid link.
         result[rawKey] = rawValue;
       }
     }
@@ -675,8 +651,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     final security =
         (rawQuery['security'] ?? stream['security'] ?? '').trim().toLowerCase();
 
-    // Keep the transport generated by flutter_v2ray_client intact. We only
-    // patch parameters that the package parser cannot currently preserve.
     if (rawQuery['type'] != null && rawQuery['type']!.isNotEmpty) {
       stream['network'] = rawQuery['type'];
     }
@@ -702,16 +676,11 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             .toList();
       }
 
-      // Xray ECH:
-      //   ech=<ECHConfigList>
-      // is accepted as an alias used by several clients. The current Xray
-      // config field is tlsSettings.echConfigList.
       final ech = (rawQuery['echConfigList'] ?? rawQuery['ech'] ?? '').trim();
       if (ech.isNotEmpty) {
         tls['echConfigList'] = ech;
       }
 
-      // New Xray share-link names.
       final vcn =
           (rawQuery['vcn'] ?? rawQuery['verifyPeerCertByName'] ?? '').trim();
       if (vcn.isNotEmpty) {
@@ -725,9 +694,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             pcs.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
       }
 
-      // flutter_v2ray_client 3.5.x follows current Xray and removed the old
-      // allowInsecure share-link field. Do not re-introduce the deprecated
-      // field into the runtime JSON.
       tls.remove('allowInsecure');
 
       stream['security'] = 'tls';
@@ -762,11 +728,8 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
   String _parseConfigToJson(String rawUrl) {
     var configUrl = _cleanUrl(rawUrl);
-
-    // Remove an accidental UTF-8 BOM without changing the actual config.
     configUrl = configUrl.replaceFirst('\uFEFF', '');
 
-    // 1) Complete Xray JSON: pass it through unchanged.
     try {
       final decoded = json.decode(configUrl);
       if (decoded is Map || decoded is List) {
@@ -787,8 +750,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         (uri.queryParameters['type'] ?? uri.queryParameters['network'] ?? '')
             .toLowerCase();
 
-    // 2) XHTTP / SplitHTTP is built explicitly because the transport has
-    // fields that older URL parsers may silently discard.
     if (network == 'xhttp' || network == 'splithttp') {
       final q = _rawQueryParametersPreservePlus(uri);
 
@@ -868,11 +829,12 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       final stream = outbound['streamSettings'] as Map<String, dynamic>;
       final xhttp = stream['xhttpSettings'] as Map<String, dynamic>;
 
-      final extra = _queryJson(q, 'extra');
-      if (extra != null) xhttp['extra'] = extra;
-
-      final finalMask = _queryJson(q, 'fm');
-      if (finalMask != null) stream['finalmask'] = finalMask;
+      final extra = q['extra'];
+      if (extra != null) {
+        try {
+          xhttp['extra'] = json.decode(extra);
+        } catch (_) {}
+      }
 
       if (security == 'tls') {
         final tls = <String, dynamic>{
@@ -891,18 +853,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
               .toList();
         }
 
-        final ech = (q['echConfigList'] ?? q['ech'] ?? '').trim();
-        if (ech.isNotEmpty) tls['echConfigList'] = ech;
-
-        final vcn = (q['vcn'] ?? q['verifyPeerCertByName'] ?? '').trim();
-        if (vcn.isNotEmpty) tls['verifyPeerCertByName'] = vcn;
-
-        final pcs = (q['pcs'] ?? q['pinnedPeerCertSha256'] ?? '').trim();
-        if (pcs.isNotEmpty) {
-          tls['pinnedPeerCertSha256'] =
-              pcs.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-        }
-
         stream['tlsSettings'] = tls;
       } else if (security == 'reality') {
         final reality = <String, dynamic>{
@@ -914,16 +864,12 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         final pbk = q['pbk'] ?? q['publicKey'] ?? '';
         final sid = q['sid'] ?? q['shortId'] ?? '';
         final spx = q['spx'] ?? q['spiderX'] ?? '';
-        final pqv = q['pqv'] ?? q['mldsa65Verify'] ?? '';
 
         if (pbk.isNotEmpty) reality['publicKey'] = pbk;
         if (sid.isNotEmpty) reality['shortId'] = sid;
         if (spx.isNotEmpty) reality['spiderX'] = spx;
-        if (pqv.isNotEmpty) reality['mldsa65Verify'] = pqv;
 
         stream['realitySettings'] = reality;
-      } else if (security != 'none' && security.isNotEmpty) {
-        throw FormatException('Unsupported XHTTP security: $security');
       }
 
       return json.encode({
@@ -944,19 +890,12 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       });
     }
 
-    // 3) Let the maintained flutter_v2ray_client parser handle every
-    // protocol it already knows (VLESS/VMess/Trojan/SS/Hysteria/etc.).
-    //
-    // We then patch only the advanced fields that older parser revisions can
-    // lose. This is deliberately safer than replacing the package parser with
-    // a partial custom parser and accidentally breaking existing protocols.
     final parser = V2ray.parseFromURL(configUrl);
     final generated = parser.getFullConfiguration();
 
     try {
       final decoded = json.decode(generated);
       if (decoded is Map<String, dynamic>) {
-        // VLESS ECH and other advanced share-link fields.
         if (scheme == 'vless') {
           final rawQuery = _rawQueryParametersPreservePlus(uri);
           _patchVlessAdvancedSettings(decoded, rawQuery);
@@ -964,10 +903,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
         return json.encode(decoded);
       }
-    } catch (_) {
-      // If the package returned something unexpected, preserve its original
-      // output instead of breaking a previously working configuration.
-    }
+    } catch (_) {}
 
     return generated;
   }
@@ -1046,10 +982,9 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   Future<void> _toggleMainConnection() async {
     if (_isConnectingProcess) return;
 
-    // قانون قطعی: با اولین لمس در حالت اتصال، فوراً وضعیت کاملاً قطع شده و قفل می‌شود
     if (_isConnected) {
       setState(() {
-        _userWantsDisconnect = true; // جلوگیری از بازگشت وضعیت توسط فیدبک‌های ناهمگام
+        _userWantsDisconnect = true;
         _isConnected = false;
         _isConnectingProcess = true;
       });
@@ -1398,7 +1333,9 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  'حجم: ${usedGb.toStringAsFixed(2)} / ${maxGb > 0 ? maxGb.toStringAsFixed(1) : "∞"} GB',
+                  maxGb > 0
+                      ? 'حجم: ${usedGb.toStringAsFixed(2)} / ${maxGb.toStringAsFixed(1)} GB'
+                      : 'حجم: نامحدود',
                   style: TextStyle(color: Colors.white.withOpacity(0.87), fontSize: 11, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 2),
