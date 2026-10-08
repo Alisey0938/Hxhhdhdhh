@@ -327,19 +327,20 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         if (!mounted) return;
         final stateUpper = status.state.toUpperCase();
 
-        if (stateUpper == 'CONNECTED') {
+        // اگر سیستم به طور خودکار متصل شد و کاربر در حال قطع کردن دستی نبود
+        if (stateUpper == 'CONNECTED' && !_isConnectingProcess) {
           setState(() {
             _isConnected = true;
-            _isConnectingProcess = false;
           });
           _calculateAndSaveTraffic(status.upload, status.download);
         } else if (stateUpper == 'DISCONNECTED' || stateUpper == 'STOPPED' || stateUpper == 'IDLE') {
-          setState(() {
-            _isConnected = false;
-            _isConnectingProcess = false;
-            _lastSessionUpload = 0;
-            _lastSessionDownload = 0;
-          });
+          if (!_isConnectingProcess) {
+            setState(() {
+              _isConnected = false;
+              _lastSessionUpload = 0;
+              _lastSessionDownload = 0;
+            });
+          }
         }
       },
     );
@@ -814,9 +815,10 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   Future<void> _toggleMainConnection() async {
     if (_isConnectingProcess) return;
 
-    // قانون دقیق: با یک بار کلیک وقتی وصل است، بی‌درنگ قطع می‌شود و دکمه خاکستری می‌گردد
+    // قانون قطعی: هر بار که دکمه در حالت اتصال است فشرده شود، سریعاً قطع و خاکستری می‌شود
     if (_isConnected) {
       setState(() {
+        _isConnected = false;
         _isConnectingProcess = true;
       });
       try {
@@ -824,8 +826,9 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       } catch (_) {}
       if (mounted) {
         setState(() {
-          _isConnected = false;
           _isConnectingProcess = false;
+          _lastSessionUpload = 0;
+          _lastSessionDownload = 0;
         });
       }
       return;
@@ -833,7 +836,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
 
     if (_configs.isEmpty) return;
 
-    // اگر سروری انتخاب نشده باشد، اولین سرور لیست را پیش‌فرض انتخاب می‌کنیم
     if (_selectedConfigId == null || !_configs.any((c) => (c['id']?.toString() ?? c['name']) == _selectedConfigId)) {
       _selectedConfigId = _configs[0]['id']?.toString() ?? _configs[0]['name'];
     }
