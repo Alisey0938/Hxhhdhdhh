@@ -814,24 +814,34 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   Future<void> _toggleMainConnection() async {
     if (_isConnectingProcess) return;
 
+    // قانون دقیق: با یک بار کلیک وقتی وصل است، بی‌درنگ قطع می‌شود و دکمه خاکستری می‌گردد
     if (_isConnected) {
-      setState(() => _isConnectingProcess = true);
+      setState(() {
+        _isConnectingProcess = true;
+      });
       try {
         await flutterV2ray.stopV2Ray();
-      } catch (_) {
-        setState(() => _isConnectingProcess = false);
+      } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _isConnected = false;
+          _isConnectingProcess = false;
+        });
       }
       return;
     }
 
-    if (_selectedConfigId == null) return;
+    if (_configs.isEmpty) return;
+
+    // اگر سروری انتخاب نشده باشد، اولین سرور لیست را پیش‌فرض انتخاب می‌کنیم
+    if (_selectedConfigId == null || !_configs.any((c) => (c['id']?.toString() ?? c['name']) == _selectedConfigId)) {
+      _selectedConfigId = _configs[0]['id']?.toString() ?? _configs[0]['name'];
+    }
 
     final selectedConfig = _configs.firstWhere(
       (c) => (c['id']?.toString() ?? c['name']) == _selectedConfigId,
-      orElse: () => null,
+      orElse: () => _configs[0],
     );
-
-    if (selectedConfig == null) return;
 
     final String rawUrl = (selectedConfig['config'] ?? '').toString();
     setState(() => _isConnectingProcess = true);
@@ -856,17 +866,28 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
           config: finalConfigJson,
           proxyOnly: false,
         );
+
+        if (mounted) {
+          setState(() {
+            _isConnected = true;
+            _isConnectingProcess = false;
+          });
+        }
       } else {
-        setState(() => _isConnectingProcess = false);
+        if (mounted) {
+          setState(() => _isConnectingProcess = false);
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در اتصال: $e'), backgroundColor: Colors.redAccent),
-      );
-      setState(() {
-        _isConnectingProcess = false;
-        _isConnected = false;
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطا در اتصال: $e'), backgroundColor: Colors.redAccent),
+        );
+        setState(() {
+          _isConnectingProcess = false;
+          _isConnected = false;
+        });
+      }
     }
   }
 
