@@ -382,7 +382,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         if (data == null || data is! Map) return;
 
         if (!_isTruthy(data['active'])) {
-          _logoutUser('حساب کاربری شما توسط ادمین غیرفعال شده است.');
+          _logoutUser('حساب کاربری شما غیرفعال شده یا حجم/اعتبار آن به پایان رسیده است.');
           return;
         }
 
@@ -404,7 +404,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
             };
             data['active_sessions'] = activeSessions;
             
-            // ارسال ترافیک فقط برای کاربران دارای محدودیت حجمی
             double maxGb = double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0.0;
             if (maxGb > 0) {
               await http.post(
@@ -480,26 +479,18 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
   void _calculateAndSaveTraffic(int currentUpload, int currentDownload) async {
     if (!_isConnected || _userData == null) return;
 
-    // بررسی حجم نامحدود: برای کاربران نامحدود (max_volume_gb <= 0) نیازی به محاسبه و ارسال ترافیک نیست
     double maxGb = double.tryParse(_userData!['max_volume_gb']?.toString() ?? '0') ?? 0.0;
-    if (maxGb <= 0) return;
+    if (maxGb <= 0) return; // حجم نامحدود
 
-    if (_lastSessionUpload == 0 && currentUpload > 0) {
-      _lastSessionUpload = currentUpload;
-    }
-    if (_lastSessionDownload == 0 && currentDownload > 0) {
+    // جلوگیری از ریست شدن یا شمارش مضاعف در صورت نوسان اتصال
+    if (currentDownload < _lastSessionDownload || currentUpload < _lastSessionUpload) {
       _lastSessionDownload = currentDownload;
+      _lastSessionUpload = currentUpload;
+      return;
     }
 
-    int uploadDelta = 0;
-    int downloadDelta = 0;
-
-    if (currentUpload >= _lastSessionUpload) {
-      uploadDelta = currentUpload - _lastSessionUpload;
-    }
-    if (currentDownload >= _lastSessionDownload) {
-      downloadDelta = currentDownload - _lastSessionDownload;
-    }
+    int uploadDelta = currentUpload - _lastSessionUpload;
+    int downloadDelta = currentDownload - _lastSessionDownload;
 
     _lastSessionUpload = currentUpload;
     _lastSessionDownload = currentDownload;
@@ -536,11 +527,10 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
     } catch (_) {}
 
     final currentDeviceId = _deviceId;
-    if (currentDeviceId != null && _userData != null && _isTruthy(_userData!['active'])) {
+    if (currentDeviceId != null && _userData != null) {
       try {
         Map<String, dynamic> activeSessions = Map<String, dynamic>.from(_userData!['active_sessions'] ?? {});
         activeSessions.remove(currentDeviceId);
-        _userData!['active_sessions'] = activeSessions;
         
         await http.post(
           Uri.parse("$apiBase?action=update_traffic"),
