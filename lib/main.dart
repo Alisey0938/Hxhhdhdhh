@@ -670,83 +670,6 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
       }
 
       return json.encode(xhttpConfig);
-    } else if (rawUrl.contains('type=ws') || rawUrl.contains('ws://')) {
-      Uri uri = Uri.parse(rawUrl);
-      String protocol = uri.scheme.toLowerCase();
-      if (protocol.isEmpty) protocol = 'vless';
-      String host = uri.host;
-      int port = uri.port;
-      String uuid = uri.userInfo;
-      Map<String, String> qParams = uri.queryParameters;
-
-      String path = qParams['path'] ?? '/';
-      String wsHost = qParams['host'] ?? host;
-      String security = qParams['security'] ?? 'none';
-      String sni = qParams['sni'] ?? wsHost;
-
-      Map<String, dynamic> wsConfig = {
-        "log": {"loglevel": "warning"},
-        "inbounds": [
-          {
-            "port": 10808,
-            "protocol": "socks",
-            "settings": {"auth": "noauth", "udp": true},
-            "sniffing": {"enabled": true, "destOverride": ["http", "tls"]}
-          }
-        ],
-        "outbounds": [
-          {
-            "protocol": protocol == 'ss' ? 'shadowsocks' : protocol,
-            "settings": protocol == 'trojan' ? {
-              "servers": [
-                {
-                  "address": host,
-                  "port": port,
-                  "password": uuid
-                }
-              ]
-            } : {
-              "vnext": [
-                {
-                  "address": host,
-                  "port": port,
-                  "users": [
-                    protocol == 'vmess' ? {
-                      "id": uuid,
-                      "alterId": 0,
-                      "security": "auto"
-                    } : {
-                      "id": uuid,
-                      "encryption": "none",
-                      "flow": ""
-                    }
-                  ]
-                }
-              ]
-            },
-            "streamSettings": {
-              "network": "ws",
-              "security": security,
-              "wsSettings": {
-                "path": path,
-                "headers": {
-                  "Host": wsHost
-                }
-              }
-            }
-          }
-        ]
-      };
-
-      if (security == 'tls' || security == 'xtls') {
-        wsConfig["outbounds"][0]["streamSettings"]["tlsSettings"] = {
-          "serverName": sni,
-          "allowInsecure": true,
-          "fingerprint": "chrome"
-        };
-      }
-
-      return json.encode(wsConfig);
     } else {
       final configUrl = _cleanUrl(rawUrl);
       V2RayURL parser = V2ray.parseFromURL(configUrl);
@@ -871,7 +794,7 @@ class _ServerListScreenState extends State<ServerListScreen> with WidgetsBinding
         String remark = selectedConfig['name'] ?? 'Xray Server';
 
         try {
-          if (!rawUrl.contains('type=xhttp') && !rawUrl.contains('type=ws') && !rawUrl.contains('ws://')) {
+          if (!rawUrl.contains('type=xhttp')) {
             V2RayURL parser = V2ray.parseFromURL(_cleanUrl(rawUrl));
             if (parser.remark.isNotEmpty) {
               remark = parser.remark;
