@@ -1555,7 +1555,7 @@ class _ServerListScreenState extends State<ServerListScreen>
         title: Column(
           children: [
             const Text(
-              'Xray Ultra',
+              'HUSKY VPN',
               style: TextStyle(fontSize: 18, color: Colors.white70),
             ),
             Text(
