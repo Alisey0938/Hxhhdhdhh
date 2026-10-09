@@ -1,7 +1,9 @@
+```yaml
 name: Build Android APK
+
 on:
   push:
-    branches: [main, master]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -15,23 +17,69 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: zulu
-          java-version: "17"
+          distribution: 'zulu'
+          java-version: '17'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.24.5"
-          channel: stable
+          flutter-version: '3.24.5'
+          channel: 'stable'
 
       - name: Create Android Platform
-        run: |
-          if [ ! -f android/app/build.gradle ]; then
-            flutter create --platforms=android \
-              --project-name husky_vpn .
-          fi
+        run: flutter create --platforms=android --project-name husky_vpn .
 
-      - name: Configure Android Signing
+      - name: Patch Android Build.gradle (Clean Minify & Fix SDK)
+        run: |
+          python3 -c '
+          import re
+          p = "android/app/build.gradle"
+          c = open(p).read()
+
+          c = re.sub(r"compileSdk\s+.*", "compileSdk 35", c)
+          c = re.sub(r"targetSdk\s+.*", "targetSdk 35", c)
+          c = re.sub(r"compileSdkVersion\s+.*", "compileSdkVersion 35", c)
+          c = re.sub(r"targetSdkVersion\s+.*", "targetSdkVersion 35", c)
+
+          if "namespace" not in c:
+              c = c.replace(
+                  "android {",
+                  "android {\n    namespace \"com.example.husky_vpn\""
+              )
+
+          if "buildToolsVersion" in c:
+              c = re.sub(
+                  r"buildToolsVersion\s+\"[^\"]+\"",
+                  "buildToolsVersion \"35.0.0\"",
+                  c
+              )
+          else:
+              c = c.replace(
+                  "defaultConfig {",
+                  "defaultConfig {\n        buildToolsVersion \"35.0.0\""
+              )
+
+          c = re.sub(r".*minifyEnabled.*\n?", "", c)
+          c = re.sub(r".*isMinifyEnabled.*\n?", "", c)
+          c = re.sub(r".*shrinkResources.*\n?", "", c)
+          c = re.sub(r".*isShrinkResources.*\n?", "", c)
+
+          open(p, "w").write(c)
+          '
+
+      - name: Install Android SDK Platform and Build-Tools 35
+        run: |
+          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
+            "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Generate App Icon
+        run: dart run flutter_launcher_icons
+
+      # Decode the persistent release keystore from GitHub Secrets.
+      - name: Setup Keystore
         env:
           SIGNING_KEY_BASE64: ${{ secrets.SIGNING_KEY_BASE64 }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -41,7 +89,12 @@ jobs:
           set -e
 
           test -n "$SIGNING_KEY_BASE64" || {
-            echo "Missing SIGNING_KEY_BASE64 secret"
+            echo "ERROR: SIGNING_KEY_BASE64 secret is missing"
+            exit 1
+          }
+
+          test -n "$KEY_ALIAS" || {
+            echo "ERROR: KEY_ALIAS secret is missing"
             exit 1
           }
 
@@ -57,33 +110,29 @@ jobs:
             echo "keyAlias=$KEY_ALIAS"
             echo "keyPassword=$KEY_PASSWORD"
             echo "storePassword=$STORE_PASSWORD"
-          } > android/app/key.properties
+          } > android/key.properties
 
-      - name: Configure Gradle Release Signing
+      - name: Configure Release Signing
         run: |
           python3 <<'PY'
           from pathlib import Path
-          import re
 
           p = Path("android/app/build.gradle")
-          if not p.exists():
-              raise SystemExit("android/app/build.gradle not found")
-
           c = p.read_text()
 
-          if "keystorePropertiesFile" not in c:
-              config = """
+          if "keystoreProperties" not in c:
+              signing_properties = """
           def keystoreProperties = new Properties()
-          def keystorePropertiesFile = rootProject.file("app/key.properties")
+          def keystorePropertiesFile = rootProject.file("key.properties")
           if (keystorePropertiesFile.exists()) {
               keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
           }
 
           """
-              c = config + c
+              c = signing_properties + c
 
           if "signingConfigs {" not in c:
-              signing = """
+              signing_config = """
               signingConfigs {
                   release {
                       keyAlias keystoreProperties['keyAlias']
@@ -94,37 +143,27 @@ jobs:
               }
 
           """
-              c = c.replace("    buildTypes {", signing + "    buildTypes {", 1)
+              c = c.replace("    buildTypes {", signing_config + "    buildTypes {", 1)
 
-          # Ensure the release build uses the persistent release key.
-          if re.search(r"signingConfig\s+signingConfigs\.debug", c):
-              c = re.sub(
-                  r"signingConfig\s+signingConfigs\.debug",
-                  "signingConfig signingConfigs.release",
-                  c
-              )
-          elif re.search(r"release\s*\{", c):
-              c = re.sub(
-                  r"(release\s*\{)",
-                  r"\1\n            signingConfig signingConfigs.release",
-                  c,
-                  count=1
-              )
+          # Ensure release uses the configured release key.
+          if "signingConfig signingConfigs.release" not in c:
+              marker = "release {"
+              pos = c.find(marker, c.find("buildTypes {"))
+              if pos == -1:
+                  raise SystemExit("Could not find release buildType in build.gradle")
+
+              insert_at = pos + len(marker)
+              c = c[:insert_at] + "\n            signingConfig signingConfigs.release" + c[insert_at:]
 
           p.write_text(c)
           PY
 
-      - name: Install Dependencies
-        run: flutter pub get
-
-      - name: Generate App Icon
-        run: dart run flutter_launcher_icons
-
-      - name: Build Release APKs
+      - name: Build Release APK (Split per ABI)
         run: flutter build apk --release --split-per-abi --no-tree-shake-icons
 
-      - name: Upload APK Artifacts
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: husky-vpn-release-apks
-          path: build/app/outputs/flutter-apk/*.apk
+          path: build/app/outputs/flutter-apk/
+```
