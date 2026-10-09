@@ -1,0 +1,88 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: Create Android Platform
+        run: flutter create --platforms=android --project-name xray_ultra .
+
+      - name: Patch Android Build.gradle (Clean Minify & Fix SDK)
+        run: |
+          python3 -c '
+          import re
+          p = "android/app/build.gradle"
+          c = open(p).read()
+          
+          # تنظیمات Compile/Target SDK
+          c = re.sub(r"compileSdk\s+.*", "compileSdk 35", c)
+          c = re.sub(r"targetSdk\s+.*", "targetSdk 35", c)
+          c = re.sub(r"compileSdkVersion\s+.*", "compileSdkVersion 35", c)
+          c = re.sub(r"targetSdkVersion\s+.*", "targetSdkVersion 35", c)
+
+          # تنظیم Namespace
+          if "namespace" not in c:
+              c = c.replace("android {", "android {\n    namespace \"com.example.xray_ultra\"")
+              
+          # تنظیم Build Tools Version
+          if "buildToolsVersion" in c:
+              c = re.sub(r"buildToolsVersion\s+\"[^\"]+\"", "buildToolsVersion \"35.0.0\"", c)
+          else:
+              c = c.replace("defaultConfig {", "defaultConfig {\n        buildToolsVersion \"35.0.0\"")
+
+          # پاک کردن خطوط دردسرساز فشرده‌سازی برای جلوگیری از ارور Gradle
+          c = re.sub(r".*minifyEnabled.*", "", c)
+          c = re.sub(r".*isMinifyEnabled.*", "", c)
+          c = re.sub(r".*shrinkResources.*", "", c)
+          c = re.sub(r".*isShrinkResources.*", "", c)
+
+          open(p, "w").write(c)
+          '
+
+      - name: Install Android SDK Platform and Build-Tools 35
+        run: |
+          echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Generate App Icon
+        run: dart run flutter_launcher_icons
+
+      - name: Setup Keystore
+        run: |
+          echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > android/app/my-release-key.jks
+          echo "storeFile=my-release-key.jks" > android/app/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/app/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/app/key.properties
+          echo "storePassword=${{ secrets.STORE_PASSWORD }}" >> android/app/key.properties
+
+      - name: Build Release APK (Split per ABI)
+        run: flutter build apk --release --split-per-abi --no-tree-shake-icons
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xray-ultra-release-apks
+          path: build/app/outputs/flutter-apk/
