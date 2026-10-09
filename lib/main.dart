@@ -20,7 +20,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Xray Ultra',
+      title: 'HUSKY VPN',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF1B1D29),
@@ -220,7 +220,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'XRAY ULTRA',
+                'HUSKY VPN',
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
@@ -532,7 +532,7 @@ class _ServerListScreenState extends State<ServerListScreen>
         }
 
         if (!activeSessions.containsKey(currentDeviceId)) {
-          await _logoutUser('دستگاه شما توسط ادمین از حساب خارج شد.');
+          await _logoutUser('دستگاه شما از حساب خارج شد.');
           return;
         }
 
