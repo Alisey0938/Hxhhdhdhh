@@ -1,4 +1,3 @@
-```yaml
 name: Build Android APK
 
 on:
@@ -166,4 +165,3 @@ jobs:
         with:
           name: husky-vpn-release-apks
           path: build/app/outputs/flutter-apk/
-```
