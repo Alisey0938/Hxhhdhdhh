@@ -1,4 +1,4 @@
-name: Husky vpn
+name: Husky_vpn
 description: "A Flutter V2Ray VPN client application."
 publish_to: 'none'
 version: 2.0.0+3
