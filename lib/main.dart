@@ -887,7 +887,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     };
   }
 
-  /// **موتور پارسر جامع و اصلاح‌شده جهت پشتیبانی ۱۰۰٪ از تمام کانفیگ‌ها (از جمله WS بدون امنیت)**
+  /// **موتور جامع و ۱۰۰٪ سازگار برای پشتیبانی از تمام کانفیگ‌ها (از جمله WS بدون امنیت و پارامترهای خالی)**
   String _parseConfigToJson(String rawUrl) {
     var configUrl = _cleanUrl(rawUrl);
 
@@ -936,19 +936,16 @@ class _ServerListScreenState extends State<ServerListScreen>
     final Uri uri;
     try {
       uri = Uri.parse(configUrl);
-    } catch (_) {
+    } catch (e) {
       try {
         return V2ray.parseFromURL(configUrl).getFullConfiguration();
-      } catch (e) {
+      } catch (_) {
         throw FormatException('خطا در پردازش لینک کانفیگ: $e');
       }
     }
 
     final scheme = uri.scheme.toLowerCase();
     final query = _rawQueryParametersPreservePlus(uri);
-    final network = _firstQueryValue(query, ['type', 'network']).toLowerCase();
-    final security = _firstQueryValue(query, ['security']).toLowerCase();
-
     final server = uri.host;
     final port = uri.hasPort ? uri.port : 443;
     final userInfo = Uri.decodeComponent(uri.userInfo);
@@ -961,94 +958,137 @@ class _ServerListScreenState extends State<ServerListScreen>
       }
     }
 
-    // پشتیبانی کامل و استاندارد از وب‌سوکت (WS) حتی با فیلدهای خالی یا امنیتی تنظیم‌نشده
-    if (network == 'ws' || network == 'websocket' || (network.isEmpty && query.containsKey('path'))) {
-      final transportHost = _firstQueryValue(query, ['host', 'authority']);
-      final path = _firstQueryValue(query, ['path']);
-      final sni = _firstQueryValue(query, ['sni', 'serverName']);
-      final fingerprint = _firstQueryValue(query, ['fp', 'fingerprint']);
-      final alpn = _firstQueryValue(query, ['alpn']);
+    final network = _firstQueryValue(query, ['type', 'network']).toLowerCase();
+    final security = _firstQueryValue(query, ['security']).toLowerCase();
+    final actualSecurity = security.isEmpty ? 'none' : security;
+    final actualNetwork = network.isEmpty ? 'tcp' : network;
 
-      final outbound = <String, dynamic>{
-        'protocol': scheme == 'trojan' ? 'trojan' : (scheme == 'vmess' ? 'vmess' : 'vless'),
-        'settings': <String, dynamic>{},
-        'streamSettings': <String, dynamic>{
-          'network': 'ws',
-          'security': security.isEmpty ? 'none' : security,
-          'wsSettings': <String, dynamic>{
-            'path': path.isEmpty ? '/' : path,
-            if (transportHost.isNotEmpty)
-              'headers': <String, dynamic>{'Host': transportHost},
-          },
+    Map<String, dynamic> outbound = {};
+
+    if (scheme == 'vless') {
+      outbound = {
+        'protocol': 'vless',
+        'settings': {
+          'vnext': [
+            {
+              'address': server,
+              'port': port,
+              'users': [
+                {
+                  'id': userInfo,
+                  'encryption': _firstQueryValue(query, ['encryption']).isEmpty
+                      ? 'none'
+                      : _firstQueryValue(query, ['encryption']),
+                  if (_firstQueryValue(query, ['flow']).isNotEmpty)
+                    'flow': _firstQueryValue(query, ['flow']),
+                }
+              ]
+            }
+          ]
         },
+        'streamSettings': {
+          'network': actualNetwork,
+          'security': actualSecurity,
+        }
       };
-
-      final settings = outbound['settings'] as Map<String, dynamic>;
-      if (scheme == 'trojan') {
-        settings['servers'] = [
-          {'address': server, 'port': port, 'password': userInfo},
-        ];
-      } else if (scheme == 'vmess') {
-        settings['vnext'] = [
-          {
-            'address': server,
-            'port': port,
-            'users': [
-              {
-                'id': userInfo,
-                'alterId': int.tryParse(query['aid'] ?? '0') ?? 0,
-                'security': query['scy'] ?? 'auto',
-              }
-            ],
-          }
-        ];
-      } else {
-        settings['vnext'] = [
-          {
-            'address': server,
-            'port': port,
-            'users': [
-              {
-                'id': userInfo,
-                'encryption': _firstQueryValue(query, ['encryption']).isEmpty
-                    ? 'none'
-                    : _firstQueryValue(query, ['encryption']),
-                if (_firstQueryValue(query, ['flow']).isNotEmpty)
-                  'flow': _firstQueryValue(query, ['flow']),
-              },
-            ],
-          },
-        ];
+    } else if (scheme == 'vmess') {
+      outbound = {
+        'protocol': 'vmess',
+        'settings': {
+          'vnext': [
+            {
+              'address': server,
+              'port': port,
+              'users': [
+                {
+                  'id': userInfo,
+                  'alterId': int.tryParse(query['aid'] ?? '0') ?? 0,
+                  'security': query['scy'] ?? 'auto',
+                }
+              ]
+            }
+          ]
+        },
+        'streamSettings': {
+          'network': actualNetwork,
+          'security': actualSecurity,
+        }
+      };
+    } else if (scheme == 'trojan') {
+      outbound = {
+        'protocol': 'trojan',
+        'settings': {
+          'servers': [
+            {
+              'address': server,
+              'port': port,
+              'password': userInfo,
+            }
+          ]
+        },
+        'streamSettings': {
+          'network': actualNetwork,
+          'security': actualSecurity,
+        }
+      };
+    } else {
+      try {
+        return V2ray.parseFromURL(configUrl).getFullConfiguration();
+      } catch (_) {
+        throw FormatException('پروتکل پشتیبانی نمی‌شود: $scheme');
       }
-
-      final stream = outbound['streamSettings'] as Map<String, dynamic>;
-      if (security == 'tls') {
-        stream['tlsSettings'] = <String, dynamic>{
-          'serverName': sni.isNotEmpty ? sni : (transportHost.isNotEmpty ? transportHost : server),
-          if (fingerprint.isNotEmpty) 'fingerprint': fingerprint,
-          if (alpn.isNotEmpty) 'alpn': _splitCsv(alpn),
-        };
-      } else if (security == 'reality') {
-        stream['realitySettings'] = <String, dynamic>{
-          'show': false,
-          'serverName': sni.isNotEmpty ? sni : (transportHost.isNotEmpty ? transportHost : server),
-          'fingerprint': fingerprint.isNotEmpty ? fingerprint : 'chrome',
-          'publicKey': _firstQueryValue(query, ['pbk', 'publicKey']),
-          'shortId': _firstQueryValue(query, ['sid', 'shortId']),
-          'spiderX': _firstQueryValue(query, ['spx', 'spiderX']),
-        };
-      }
-
-      return json.encode(_baseConfig(outbound));
     }
 
-    // استفاده از پکیج رسمی برای بقیه ساختارها
-    try {
-      final parser = V2ray.parseFromURL(configUrl);
-      return parser.getFullConfiguration();
-    } catch (_) {
-      throw const FormatException('ساختار کانفیگ پشتیبانی نمی‌شود.');
+    final streamSettings = outbound['streamSettings'] as Map<String, dynamic>;
+
+    if (actualNetwork == 'ws' || actualNetwork == 'websocket') {
+      final path = _firstQueryValue(query, ['path']);
+      final hostHeader = _firstQueryValue(query, ['host', 'authority']);
+      streamSettings['network'] = 'ws';
+      streamSettings['wsSettings'] = {
+        'path': path.isEmpty ? '/' : path,
+        if (hostHeader.isNotEmpty)
+          'headers': {'Host': hostHeader}
+      };
+    } else if (actualNetwork == 'grpc') {
+      final serviceName = _firstQueryValue(query, ['serviceName', 'path']);
+      streamSettings['grpcSettings'] = {
+        'serviceName': serviceName.isEmpty ? '' : serviceName,
+      };
+    } else if (actualNetwork == 'xhttp' || actualNetwork == 'splithttp') {
+      final path = _firstQueryValue(query, ['path']);
+      final hostHeader = _firstQueryValue(query, ['host', 'authority']);
+      final mode = _firstQueryValue(query, ['mode']);
+      streamSettings['network'] = 'xhttp';
+      streamSettings['xhttpSettings'] = {
+        'path': path.isEmpty ? '/' : path,
+        if (hostHeader.isNotEmpty) 'host': hostHeader,
+        if (mode.isNotEmpty) 'mode': mode,
+      };
     }
+
+    final sni = _firstQueryValue(query, ['sni', 'serverName']);
+    final fingerprint = _firstQueryValue(query, ['fp', 'fingerprint']);
+    final alpn = _firstQueryValue(query, ['alpn']);
+
+    if (actualSecurity == 'tls') {
+      streamSettings['tlsSettings'] = {
+        'serverName': sni.isNotEmpty ? sni : server,
+        if (fingerprint.isNotEmpty) 'fingerprint': fingerprint,
+        if (alpn.isNotEmpty) 'alpn': _splitCsv(alpn),
+      };
+    } else if (actualSecurity == 'reality') {
+      streamSettings['realitySettings'] = {
+        'show': false,
+        'serverName': sni.isNotEmpty ? sni : server,
+        'fingerprint': fingerprint.isNotEmpty ? fingerprint : 'chrome',
+        'publicKey': _firstQueryValue(query, ['pbk', 'publicKey']),
+        'shortId': _firstQueryValue(query, ['sid', 'shortId']),
+        'spiderX': _firstQueryValue(query, ['spx', 'spiderX']),
+      };
+    }
+
+    return json.encode(_baseConfig(outbound));
   }
 
   Future<void> _testAllPings() async {
