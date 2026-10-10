@@ -1077,16 +1077,19 @@ class _ServerListScreenState extends State<ServerListScreen>
     final security = _firstQueryValue(query, ['security']).toLowerCase();
 
     // WebSocket را دستی می‌سازیم تا Host و path دقیقاً از لینک حفظ شوند.
-    // این مسیر مخصوص لینک‌های VLESS/VMess/Trojan با type=ws است؛ سایر
-    // پروتکل‌ها همچنان از parser رسمی پایین‌تر عبور می‌کنند.
-    if (network == 'ws' &&
-        (scheme == 'vless' || scheme == 'vmess' || scheme == 'trojan')) {
+    // type=ws و type=websocket هر دو پشتیبانی می‌شوند.
+    if ((network == 'ws' || network == 'websocket') &&
+        (scheme == 'vless' ||
+            scheme == 'vmess' ||
+            scheme == 'trojan')) {
       final serverHost = uri.host;
       final port = uri.hasPort ? uri.port : 443;
       final userInfo = Uri.decodeComponent(uri.userInfo);
 
       if (serverHost.isEmpty || userInfo.isEmpty) {
-        throw const FormatException('WebSocket config has no server or user ID');
+        throw const FormatException(
+          'WebSocket config has no server or user ID',
+        );
       }
 
       final transportHostValue = _firstQueryValue(query, ['host', 'authority']);
@@ -1095,8 +1098,12 @@ class _ServerListScreenState extends State<ServerListScreen>
           : serverHost;
       final pathValue = _firstQueryValue(query, ['path']);
       final path = pathValue.isNotEmpty ? pathValue : '/';
-      // security= خالی باید مانند لینک بدون TLS تفسیر شود.
-      final wsSecurity = security.isEmpty ? 'none' : security;
+
+      // فقط TLS و Reality پذیرفته می‌شوند؛ مقدار خالی یا ناشناخته none است.
+      final wsSecurity =
+          (security == 'tls' || security == 'reality')
+              ? security
+              : 'none';
 
       final outbound = <String, dynamic>{
         'protocol': scheme,
@@ -1106,8 +1113,6 @@ class _ServerListScreenState extends State<ServerListScreen>
           'security': wsSecurity,
           'wsSettings': <String, dynamic>{
             'path': path,
-            // هر دو شکل را تنظیم می‌کنیم تا نسخه‌های مختلف Xray
-            // مقدار Host را به‌درستی دریافت کنند.
             'host': transportHost,
             'headers': <String, dynamic>{'Host': transportHost},
           },
@@ -1128,7 +1133,10 @@ class _ServerListScreenState extends State<ServerListScreen>
               {
                 'id': userInfo,
                 'alterId': int.tryParse(query['aid'] ?? '0') ?? 0,
-                'security': _firstQueryValue(query, ['scy', 'securityMethod']).isNotEmpty
+                'security': _firstQueryValue(
+                          query,
+                          ['scy', 'securityMethod'],
+                        ).isNotEmpty
                     ? _firstQueryValue(query, ['scy', 'securityMethod'])
                     : 'auto',
               },
@@ -1350,8 +1358,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
 
     // پروتکل‌هایی که خود پلاگین می‌شناسد از parser رسمی عبور می‌کنند.
-    // این مسیر برای VLESS، VMess، Trojan، Shadowsocks و پروتکل‌های
-    // پشتیبانی‌شده در نسخه نصب‌شده حفظ شده است.
     final parser = V2ray.parseFromURL(configUrl);
     final generated = parser.getFullConfiguration();
 
@@ -1543,16 +1549,18 @@ class _ServerListScreenState extends State<ServerListScreen>
       );
 
       // برگشتن startV2Ray به‌تنهایی به معنی اتصال موفق به سرور نیست.
-      // فقط رویداد CONNECTED از هسته اجازه می‌دهد UI متصل نشان داده شود.
       await Future<void>.delayed(const Duration(seconds: 4));
       if (!mounted || _userWantsDisconnect) return;
 
       if (!_isConnected) {
         setState(() => _isConnectingProcess = false);
-        debugPrint('V2Ray: no CONNECTED status after 4 seconds; collecting core logs.');
+        debugPrint(
+          'V2Ray: no CONNECTED status after 4 seconds; collecting core logs.',
+        );
         try {
           final logs = await flutterV2ray.getLogs();
-          for (final line in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
+          for (final line
+              in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
             debugPrint('[XRAY_CORE] $line');
           }
         } catch (logError) {
@@ -1562,7 +1570,9 @@ class _ServerListScreenState extends State<ServerListScreen>
         if (mounted && !_isConnected) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('هسته اتصال را تأیید نکرد. لاگ‌های [XRAY_CORE] را از Debug Console بررسی کنید.'),
+              content: Text(
+                'هسته اتصال را تأیید نکرد. لاگ‌های [XRAY_CORE] را از Debug Console بررسی کنید.',
+              ),
               duration: Duration(seconds: 6),
             ),
           );
@@ -1575,7 +1585,8 @@ class _ServerListScreenState extends State<ServerListScreen>
       debugPrint('$stackTrace');
       try {
         final logs = await flutterV2ray.getLogs();
-        for (final line in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
+        for (final line
+            in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
           debugPrint('[XRAY_CORE] $line');
         }
       } catch (logError) {
