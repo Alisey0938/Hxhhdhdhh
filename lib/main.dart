@@ -1052,10 +1052,10 @@ class _ServerListScreenState extends State<ServerListScreen>
       }
     } catch (_) {}
 
-    final Uri uri;
+    // رفع خطای تعریف مجدد فینال (بدون کلمه final)
+    Uri uri;
 
     try {
-      // استفاده از Uri.encodeFull برای پشتیبانی از ایموجی و حروف فارسی در بخش Fragment
       uri = Uri.parse(Uri.encodeFull(configUrl));
     } catch (_) {
       try {
@@ -1156,7 +1156,7 @@ class _ServerListScreenState extends State<ServerListScreen>
         final vcn = _firstQueryValue(query, ['vcn', 'verifyPeerCertByName']);
         final pcs = _firstQueryValue(query, ['pcs', 'pinnedPeerCertSha256']);
         if (vcn.isNotEmpty) tls['verifyPeerCertByName'] = vcn;
-        if (pcs.isNotEmpty) tls['pinnedPeerCertSha256'] = _splitCsv(pcs);
+        if (pcs.isNotEmpty) tls['pinnedPeerCertSha256'] = pcs;
 
         stream['tlsSettings'] = tls;
       } else if (security == 'reality') {
