@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
@@ -24,10 +23,14 @@ class MyApp extends StatelessWidget {
       title: 'HUSKY VPN',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF020617),
+        scaffoldBackgroundColor: const Color(0xFF1B1D29),
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF38BDF8),
-          surface: Color(0xFF0F172A),
+          primary: Color(0xFF8B9BB4),
+          surface: Color(0xFF222536),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF1B1D29),
+          elevation: 0,
         ),
       ),
       home: const AuthCheckScreen(),
@@ -69,7 +72,7 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
   Widget build(BuildContext context) {
     return const Scaffold(
       body: Center(
-        child: CircularProgressIndicator(color: Color(0xFF38BDF8)),
+        child: CircularProgressIndicator(color: Color(0xFF8B9BB4)),
       ),
     );
   }
@@ -96,7 +99,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (Platform.isAndroid) {
         final info = await deviceInfo.androidInfo;
-        final model = info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
+        final model =
+            info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
         return model.isNotEmpty ? model : 'ANDROID_${info.id}';
       }
 
@@ -115,7 +119,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (username.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لطفاً نام کاربری و رمز عبور را وارد کنید.')),
+        const SnackBar(
+          content: Text('لطفاً نام کاربری و رمز عبور را وارد کنید.'),
+        ),
       );
       return;
     }
@@ -147,7 +153,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (data is! Map || data['status'] != 'success') {
         _showError(
           data is Map
-              ? (data['message']?.toString() ?? 'نام کاربری یا رمز عبور اشتباه است.')
+              ? (data['message']?.toString() ??
+                  'نام کاربری یا رمز عبور اشتباه است.')
               : 'پاسخ سرور معتبر نیست.',
         );
         return;
@@ -183,7 +190,10 @@ class _LoginScreenState extends State<LoginScreen> {
   void _showError(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+      ),
     );
   }
 
@@ -197,117 +207,78 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment(0, -0.3),
-            radius: 1.2,
-            colors: [Color(0xFF1E3A8A), Color(0xFF030712)],
-          ),
-        ),
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A).withOpacity(0.8),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(color: const Color(0xFF38BDF8).withOpacity(0.3)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF38BDF8).withOpacity(0.2),
-                        blurRadius: 30,
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.shield_rounded,
-                    size: 60,
-                    color: Color(0xFF38BDF8),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.vpn_key_rounded,
+                size: 80,
+                color: Color(0xFF8B9BB4),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'HUSKY VPN',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              const SizedBox(height: 32),
+              TextField(
+                controller: _usernameController,
+                decoration: InputDecoration(
+                  labelText: 'نام کاربری',
+                  filled: true,
+                  fillColor: const Color(0xFF222536),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
                   ),
                 ),
-                const SizedBox(height: 16),
-                const Text(
-                  'HUSKY VPN',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.black,
-                    letterSpacing: 2,
-                    color: Colors.white,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'رمز عبور',
+                  filled: true,
+                  fillColor: const Color(0xFF222536),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
                   ),
                 ),
-                const SizedBox(height: 36),
-                TextField(
-                  controller: _usernameController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'نام کاربری',
-                    labelStyle: const TextStyle(color: Colors.white54),
-                    filled: true,
-                    fillColor: const Color(0xFF0F172A).withOpacity(0.9),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+                onSubmitted: (_) => _isLoading ? null : _login(),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF3B4261),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'رمز عبور',
-                    labelStyle: const TextStyle(color: Colors.white54),
-                    filled: true,
-                    fillColor: const Color(0xFF0F172A).withOpacity(0.9),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
-                    ),
-                  ),
-                  onSubmitted: (_) => _isLoading ? null : _login(),
-                ),
-                const SizedBox(height: 28),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0284C7),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 8,
-                      shadowColor: const Color(0xFF38BDF8).withOpacity(0.5),
-                    ),
-                    onPressed: _isLoading ? null : _login,
-                    child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text(
-                            'ورود به حساب',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
+                  onPressed: _isLoading ? null : _login,
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text(
+                          'ورود',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
                           ),
-                  ),
+                        ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -376,6 +347,7 @@ class _ServerListScreenState extends State<ServerListScreen>
   @override
   void initState() {
     super.initState();
+
     WidgetsBinding.instance.addObserver(this);
 
     _initDeviceIdAndStart();
@@ -391,10 +363,14 @@ class _ServerListScreenState extends State<ServerListScreen>
     if (_deviceId == null || _deviceId!.isEmpty) {
       try {
         final deviceInfo = DeviceInfoPlugin();
+
         if (Platform.isAndroid) {
           final info = await deviceInfo.androidInfo;
-          final model = info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
-          _deviceId = model.isNotEmpty ? model : 'ANDROID_${info.id}';
+          final model =
+              info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
+
+          _deviceId =
+              model.isNotEmpty ? model : 'ANDROID_${info.id}';
         } else if (Platform.isIOS) {
           final info = await deviceInfo.iosInfo;
           _deviceId = info.model;
@@ -528,9 +504,13 @@ class _ServerListScreenState extends State<ServerListScreen>
       final data = Map<String, dynamic>.from(decoded);
 
       if (!_isTruthy(data['active'])) {
-        final maxGb = double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0;
-        final usedBytes = int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
-        final maxBytes = maxGb > 0 ? maxGb * 1024 * 1024 * 1024 : 0.0;
+        final maxGb =
+            double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0;
+        final usedBytes =
+            int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
+        final maxBytes = maxGb > 0
+            ? maxGb * 1024 * 1024 * 1024
+            : 0.0;
 
         if (maxGb > 0 && usedBytes >= maxBytes) {
           await _logoutUser('حجم مصرفی مجاز شما به پایان رسید.');
@@ -582,7 +562,8 @@ class _ServerListScreenState extends State<ServerListScreen>
 
       _userData = data;
 
-      final serverUsedBytes = int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
+      final serverUsedBytes =
+          int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
 
       if (_accumulatedUsedBytes < serverUsedBytes) {
         _accumulatedUsedBytes = serverUsedBytes;
@@ -612,10 +593,12 @@ class _ServerListScreenState extends State<ServerListScreen>
         _remainingTimeText = 'نامحدود';
       }
 
-      final maxGb = double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0;
+      final maxGb =
+          double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0;
 
       if (maxGb > 0) {
-        final usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
+        final usedGb =
+            _accumulatedUsedBytes / (1024 * 1024 * 1024);
 
         if (usedGb >= maxGb) {
           await _logoutUser('حجم مصرفی مجاز شما به پایان رسید.');
@@ -639,7 +622,8 @@ class _ServerListScreenState extends State<ServerListScreen>
   ) async {
     if (_userData == null) return;
 
-    final maxGb = double.tryParse(_userData!['max_volume_gb']?.toString() ?? '0') ?? 0;
+    final maxGb =
+        double.tryParse(_userData!['max_volume_gb']?.toString() ?? '0') ?? 0;
 
     if (maxGb <= 0) return;
 
@@ -675,7 +659,8 @@ class _ServerListScreenState extends State<ServerListScreen>
     if (_trafficUpdateInProgress || _pendingTrafficBytes <= 0) return;
     if (_userData == null) return;
 
-    final maxGb = double.tryParse(_userData!['max_volume_gb']?.toString() ?? '0') ?? 0;
+    final maxGb =
+        double.tryParse(_userData!['max_volume_gb']?.toString() ?? '0') ?? 0;
 
     if (maxGb <= 0) {
       _pendingTrafficBytes = 0;
@@ -702,10 +687,12 @@ class _ServerListScreenState extends State<ServerListScreen>
         final dynamic result = json.decode(response.body);
 
         if (result is Map && result['status'] == 'success') {
-          _pendingTrafficBytes = (_pendingTrafficBytes - batch).clamp(0, 1 << 62);
+          _pendingTrafficBytes =
+              (_pendingTrafficBytes - batch).clamp(0, 1 << 62);
 
-          final serverUsedBytes = int.tryParse(result['used_bytes']?.toString() ?? '') ??
-              (_accumulatedUsedBytes + batch);
+          final serverUsedBytes =
+              int.tryParse(result['used_bytes']?.toString() ?? '') ??
+                  (_accumulatedUsedBytes + batch);
 
           _accumulatedUsedBytes = serverUsedBytes;
           _userData!['used_bytes'] = serverUsedBytes;
@@ -764,7 +751,10 @@ class _ServerListScreenState extends State<ServerListScreen>
 
     if (reason.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(reason), backgroundColor: Colors.redAccent),
+        SnackBar(
+          content: Text(reason),
+          backgroundColor: Colors.redAccent,
+        ),
       );
     }
 
@@ -849,7 +839,8 @@ class _ServerListScreenState extends State<ServerListScreen>
       final rawValue = eq >= 0 ? part.substring(eq + 1) : '';
 
       try {
-        result[Uri.decodeComponent(rawKey)] = Uri.decodeComponent(rawValue);
+        result[Uri.decodeComponent(rawKey)] =
+            Uri.decodeComponent(rawValue);
       } catch (_) {
         result[rawKey] = rawValue;
       }
@@ -858,7 +849,10 @@ class _ServerListScreenState extends State<ServerListScreen>
     return result;
   }
 
-  String _firstQueryValue(Map<String, String> query, List<String> keys) {
+  String _firstQueryValue(
+    Map<String, String> query,
+    List<String> keys,
+  ) {
     for (final key in keys) {
       final value = query[key]?.trim();
       if (value != null && value.isNotEmpty) return value;
@@ -893,7 +887,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     };
   }
 
-  /// **موتور جامع و اصلاح‌شده برای پشتیبانی ۱۰۰٪ از تمام کانفیگ‌ها با هر متود و پارامتری**
+  /// **موتور پارسر جامع و اصلاح‌شده جهت پشتیبانی ۱۰۰٪ از تمام کانفیگ‌ها (از جمله WS بدون امنیت)**
   String _parseConfigToJson(String rawUrl) {
     var configUrl = _cleanUrl(rawUrl);
 
@@ -901,7 +895,6 @@ class _ServerListScreenState extends State<ServerListScreen>
       throw const FormatException('Config is empty');
     }
 
-    // بررسی فرمت JSON مستقیم
     try {
       final decodedJson = json.decode(configUrl);
       if (decodedJson is Map || decodedJson is List) {
@@ -909,7 +902,6 @@ class _ServerListScreenState extends State<ServerListScreen>
       }
     } catch (_) {}
 
-    // دیکد کردن Base64 لینک‌های اشتراک
     if (!configUrl.contains('://') &&
         !configUrl.startsWith('{') &&
         !configUrl.startsWith('[')) {
@@ -948,7 +940,7 @@ class _ServerListScreenState extends State<ServerListScreen>
       try {
         return V2ray.parseFromURL(configUrl).getFullConfiguration();
       } catch (e) {
-        throw FormatException('ناتوان در تجزیه لینک کانفیگ: $e');
+        throw FormatException('خطا در پردازش لینک کانفیگ: $e');
       }
     }
 
@@ -965,12 +957,12 @@ class _ServerListScreenState extends State<ServerListScreen>
       try {
         return V2ray.parseFromURL(configUrl).getFullConfiguration();
       } catch (_) {
-        throw const FormatException('کانفیگ فاقد آدرس سرور یا شناسه کاربری است.');
+        throw const FormatException('کانفیگ فاقد آدرس سرور یا شناسه است.');
       }
     }
 
-    // مدیریت اختصاصی کانفیگ‌های وب‌سوکت (WS) جهت رفع خطای خالی بودن security
-    if (network == 'ws' || network == 'websocket' || network.isEmpty) {
+    // پشتیبانی کامل و استاندارد از وب‌سوکت (WS) حتی با فیلدهای خالی یا امنیتی تنظیم‌نشده
+    if (network == 'ws' || network == 'websocket' || (network.isEmpty && query.containsKey('path'))) {
       final transportHost = _firstQueryValue(query, ['host', 'authority']);
       final path = _firstQueryValue(query, ['path']);
       final sni = _firstQueryValue(query, ['sni', 'serverName']);
@@ -981,17 +973,15 @@ class _ServerListScreenState extends State<ServerListScreen>
         'protocol': scheme == 'trojan' ? 'trojan' : (scheme == 'vmess' ? 'vmess' : 'vless'),
         'settings': <String, dynamic>{},
         'streamSettings': <String, dynamic>{
-          'network': network.isEmpty ? 'tcp' : 'ws',
+          'network': 'ws',
           'security': security.isEmpty ? 'none' : security,
+          'wsSettings': <String, dynamic>{
+            'path': path.isEmpty ? '/' : path,
+            if (transportHost.isNotEmpty)
+              'headers': <String, dynamic>{'Host': transportHost},
+          },
         },
       };
-
-      if (network == 'ws' || network == 'websocket') {
-        (outbound['streamSettings'] as Map<String, dynamic>)['wsSettings'] = <String, dynamic>{
-          'path': path.isEmpty ? '/' : path,
-          if (transportHost.isNotEmpty) 'headers': <String, dynamic>{'Host': transportHost},
-        };
-      }
 
       final settings = outbound['settings'] as Map<String, dynamic>;
       if (scheme == 'trojan') {
@@ -1052,12 +1042,12 @@ class _ServerListScreenState extends State<ServerListScreen>
       return json.encode(_baseConfig(outbound));
     }
 
-    // استفاده از پکیج رسمی برای بقیه پروتکل‌ها و متودها به عنوان پایگاه مطمئن
+    // استفاده از پکیج رسمی برای بقیه ساختارها
     try {
       final parser = V2ray.parseFromURL(configUrl);
       return parser.getFullConfiguration();
     } catch (_) {
-      throw const FormatException('ساختار لینک کانفیگ پشتیبانی نمی‌شود.');
+      throw const FormatException('ساختار کانفیگ پشتیبانی نمی‌شود.');
     }
   }
 
@@ -1067,6 +1057,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     if (mounted) {
       setState(() {
         _isTestingAllPings = true;
+
         for (final item in _configs) {
           final id = _configId(item);
           if (id.isNotEmpty) {
@@ -1085,10 +1076,13 @@ class _ServerListScreenState extends State<ServerListScreen>
       _configs.sort((a, b) {
         final pingA = _pings[_configId(a)] ?? -1;
         final pingB = _pings[_configId(b)] ?? -1;
+
         final validA = pingA > 0 ? pingA : 1 << 30;
         final validB = pingB > 0 ? pingB : 1 << 30;
+
         return validA.compareTo(validB);
       });
+
       _isTestingAllPings = false;
     });
   }
@@ -1241,9 +1235,15 @@ class _ServerListScreenState extends State<ServerListScreen>
     if (value.startsWith('vless://')) return 'VLESS';
     if (value.startsWith('vmess://')) return 'VMESS';
     if (value.startsWith('trojan://')) return 'TROJAN';
-    if (value.startsWith('ss://') || value.startsWith('shadowsocks://')) return 'SS';
+    if (value.startsWith('ss://') ||
+        value.startsWith('shadowsocks://')) {
+      return 'SS';
+    }
     if (value.startsWith('socks://')) return 'SOCKS';
-    if (value.startsWith('hysteria2://') || value.startsWith('hy2://')) return 'HY2';
+    if (value.startsWith('hysteria2://') ||
+        value.startsWith('hy2://')) {
+      return 'HY2';
+    }
     if (value.startsWith('hysteria://')) return 'HYSTERIA';
     if (value.startsWith('tuic://')) return 'TUIC';
     if (value.startsWith('wireguard://')) return 'WG';
@@ -1253,7 +1253,8 @@ class _ServerListScreenState extends State<ServerListScreen>
   }
 
   Widget _buildAnnouncementBanner() {
-    if (_announcementData == null || !_isTruthy(_announcementData!['enabled'])) {
+    if (_announcementData == null ||
+        !_isTruthy(_announcementData!['enabled'])) {
       return const SizedBox.shrink();
     }
 
@@ -1264,31 +1265,35 @@ class _ServerListScreenState extends State<ServerListScreen>
     return GestureDetector(
       onTap: () async {
         if (targetUrl.isEmpty) return;
+
         final uri = Uri.tryParse(targetUrl);
         if (uri == null) return;
+
         try {
           if (await canLaunchUrl(uri)) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
+            await launchUrl(
+              uri,
+              mode: LaunchMode.externalApplication,
+            );
           }
         } catch (_) {}
       },
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: const Color(0xFF0F172A).withOpacity(0.85),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFF38BDF8).withOpacity(0.3)),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 15),
-          ],
+          color: const Color(0xFF2E354F),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: const Color(0xFF8B5CF6).withOpacity(0.5),
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (imageUrl.isNotEmpty)
               ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(8),
                 child: Image.network(
                   imageUrl,
                   width: double.infinity,
@@ -1297,20 +1302,33 @@ class _ServerListScreenState extends State<ServerListScreen>
                   errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                 ),
               ),
-            if (imageUrl.isNotEmpty && text.isNotEmpty) const SizedBox(height: 8),
+            if (imageUrl.isNotEmpty && text.isNotEmpty)
+              const SizedBox(height: 8),
             if (text.isNotEmpty)
               Row(
                 children: [
-                  const Icon(Icons.campaign_rounded, color: Color(0xFF38BDF8), size: 20),
+                  const Icon(
+                    Icons.campaign,
+                    color: Color(0xFFA78BFA),
+                    size: 22,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       text,
-                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                   if (targetUrl.isNotEmpty)
-                    const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 12),
+                    const Icon(
+                      Icons.arrow_forward_ios,
+                      color: Colors.white38,
+                      size: 14,
+                    ),
                 ],
               ),
           ],
@@ -1321,342 +1339,352 @@ class _ServerListScreenState extends State<ServerListScreen>
 
   @override
   Widget build(BuildContext context) {
-    final maxGb = double.tryParse(_userData?['max_volume_gb']?.toString() ?? '0') ?? 0;
-    final usedGb = maxGb > 0 ? _accumulatedUsedBytes / (1024 * 1024 * 1024) : 0.0;
+    final maxGb =
+        double.tryParse(_userData?['max_volume_gb']?.toString() ?? '0') ?? 0;
+
+    final usedGb = maxGb > 0
+        ? _accumulatedUsedBytes / (1024 * 1024 * 1024)
+        : 0.0;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF020617),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment(0, -0.4),
-            radius: 1.3,
-            colors: [Color(0xFF1E3A8A), Color(0xFF020617)],
-          ),
+      appBar: AppBar(
+        title: Column(
+          children: [
+            const Text(
+              'HUSKY VPN',
+              style: TextStyle(fontSize: 18, color: Colors.white70),
+            ),
+            Text(
+              'Core: $_coreVersion',
+              style: const TextStyle(fontSize: 10, color: Colors.white38),
+            ),
+          ],
         ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // هدر بالای صفحه (SkyVPN Style)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.between,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0F172A).withOpacity(0.8),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFF38BDF8).withOpacity(0.3)),
-                          ),
-                          child: const Icon(Icons.shield_rounded, color: Color(0xFF38BDF8), size: 20),
-                        ),
-                        const SizedBox(width: 10),
-                        const Text(
-                          'HUSKY VPN',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.black, letterSpacing: 1.5, color: Colors.white),
-                        ),
-                      ],
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.redAccent),
+            onPressed: () {
+              showDialog<void>(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  backgroundColor: const Color(0xFF222536),
+                  title: const Text('خروج از حساب'),
+                  content: const Text(
+                    'آیا می‌خواهید از حساب کاربری خود خارج شوید؟',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text('انصراف'),
                     ),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0F172A).withOpacity(0.8),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFF38BDF8).withOpacity(0.3)),
-                          ),
-                          child: Text(
-                            'Core: $_coreVersion',
-                            style: const TextStyle(fontSize: 10, color: Color(0xFF38BDF8), fontFamily: 'monospace'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.logout_rounded, color: Colors.redAccent, size: 20),
-                          onPressed: () {
-                            showDialog<void>(
-                              context: context,
-                              builder: (dialogContext) => AlertDialog(
-                                backgroundColor: const Color(0xFF0F172A),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                title: const Text('خروج از حساب', style: TextStyle(color: Colors.white)),
-                                content: const Text('آیا می‌خواهید از حساب کاربری خود خارج شوید؟', style: TextStyle(color: Colors.white70)),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(dialogContext),
-                                    child: const Text('انصراف', style: TextStyle(color: Colors.white54)),
-                                  ),
-                                  TextButton(
-                                    onPressed: () {
-                                      Navigator.pop(dialogContext);
-                                      _logoutUser('');
-                                    },
-                                    child: const Text('خروج', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              // بنر اعلان
-              _buildAnnouncementBanner(),
-
-              // بخش دکمه مرکزی اتصال و وضعیت (SkyVPN Luxury Center)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: _isConnected ? Colors.greenAccent : Colors.redAccent,
-                            boxShadow: [
-                              BoxShadow(
-                                color: (_isConnected ? Colors.greenAccent : Colors.redAccent).withOpacity(0.8),
-                                blurRadius: 10,
-                                spreadRadius: 2,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _isConnected ? 'CONNECTED' : 'DISCONNECTED',
-                          style: TextStyle(
-                            color: _isConnected ? Colors.greenAccent : Colors.white60,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    // دکمه پاور نئونی بزرگ
-                    GestureDetector(
-                      onTap: _toggleMainConnection,
-                      child: Container(
-                        width: 110,
-                        height: 110,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            colors: _isConnected
-                                ? [const Color(0xFF059669), const Color(0xFF10B981)]
-                                : [const Color(0xFF1E3A8A), const Color(0xFF0284C7)],
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: (_isConnected ? const Color(0xFF10B981) : const Color(0xFF38BDF8)).withOpacity(0.5),
-                              blurRadius: 35,
-                              spreadRadius: 5,
-                            ),
-                          ],
-                          border: Border.all(color: Colors.white.withOpacity(0.3), width: 2),
-                        ),
-                        child: Center(
-                          child: _isConnectingProcess
-                              ? const SizedBox(width: 30, height: 30, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
-                              : Icon(
-                                  Icons.power_settings_new_rounded,
-                                  size: 50,
-                                  color: Colors.white,
-                                ),
-                        ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(dialogContext);
+                        _logoutUser('');
+                      },
+                      child: const Text(
+                        'خروج',
+                        style: TextStyle(color: Colors.redAccent),
                       ),
                     ),
                   ],
                 ),
-              ),
-
-              // لیست سرورهای شیشه‌ای
-              Expanded(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator(color: Color(0xFF38BDF8)))
-                    : _configs.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.cloud_off_rounded, size: 42, color: Colors.white38),
-                                const SizedBox(height: 12),
-                                const Text('سروری دریافت نشد.', style: TextStyle(color: Colors.white70)),
-                                const SizedBox(height: 8),
-                                TextButton(onPressed: _fetchConfigs, child: const Text('تلاش دوباره')),
-                              ],
+              );
+            },
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          _buildAnnouncementBanner(),
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: Color(0xFF8B9BB4),
+                    ),
+                  )
+                : _configs.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.cloud_off,
+                              size: 42,
+                              color: Colors.white38,
                             ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                            itemCount: _configs.length,
-                            itemBuilder: (context, index) {
-                              final item = _configs[index];
-                              final configId = _configId(item);
-                              final configUrl = (item['config'] ?? '').toString();
-                              final protocol = _getProtocolType(configUrl);
-                              final isSelected = _selectedConfigId == configId;
-                              final ping = _pings[configId] ?? -1;
-                              final pingLoading = _pingLoading[configId] ?? false;
+                            const SizedBox(height: 12),
+                            const Text('سروری دریافت نشد.'),
+                            const SizedBox(height: 8),
+                            TextButton(
+                              onPressed: _fetchConfigs,
+                              child: const Text('تلاش دوباره'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        itemCount: _configs.length,
+                        itemBuilder: (context, index) {
+                          final item = _configs[index];
+                          final configId = _configId(item);
+                          final configUrl =
+                              (item['config'] ?? '').toString();
+                          final protocol = _getProtocolType(configUrl);
+                          final isSelected =
+                              _selectedConfigId == configId;
+                          final ping = _pings[configId] ?? -1;
+                          final pingLoading =
+                              _pingLoading[configId] ?? false;
 
-                              return GestureDetector(
-                                onTap: () {
-                                  if (_isConnected) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('لطفاً ابتدا اتصال فعلی را قطع کنید.'),
-                                        backgroundColor: Colors.orangeAccent,
-                                      ),
-                                    );
-                                    return;
-                                  }
-
-                                  setState(() {
-                                    _selectedConfigId = configId;
-                                  });
-                                },
-                                child: Container(
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  padding: const EdgeInsets.all(14),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? const Color(0xFF1E3A8A).withOpacity(0.4)
-                                        : const Color(0xFF0F172A).withOpacity(0.75),
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: isSelected ? const Color(0xFF38BDF8) : Colors.white.withOpacity(0.08),
-                                      width: isSelected ? 1.5 : 1,
+                          return GestureDetector(
+                            onTap: () {
+                              if (_isConnected) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'لطفاً ابتدا اتصال فعلی را قطع کنید.',
                                     ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.4),
-                                        blurRadius: 10,
-                                      ),
-                                    ],
+                                    backgroundColor: Colors.orangeAccent,
                                   ),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF38BDF8).withOpacity(0.15),
-                                          borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(color: const Color(0xFF38BDF8).withOpacity(0.3)),
+                                );
+                                return;
+                              }
+
+                              setState(() {
+                                _selectedConfigId = configId;
+                              });
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? const Color(0xFF2A3045)
+                                    : const Color(0xFF232738),
+                                borderRadius: BorderRadius.circular(12),
+                                border: isSelected
+                                    ? Border.all(
+                                        color: const Color(0xFF7A93D1),
+                                        width: 1.5,
+                                      )
+                                    : null,
+                              ),
+                              child: IntrinsicHeight(
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 26,
+                                      decoration: const BoxDecoration(
+                                        color: Colors.black26,
+                                        borderRadius: BorderRadius.only(
+                                          topLeft: Radius.circular(12),
+                                          bottomLeft: Radius.circular(12),
                                         ),
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: RotatedBox(
+                                        quarterTurns: 3,
                                         child: Text(
                                           protocol,
                                           style: const TextStyle(
-                                            color: Color(0xFF38BDF8),
-                                            fontSize: 9,
+                                            color: Colors.white38,
+                                            fontSize: 10,
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
                                       ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 14,
+                                        ),
                                         child: Text(
-                                          (item['name'] ?? 'سرور Xray').toString(),
-                                          style: TextStyle(
-                                            color: isSelected ? Colors.white : Colors.white.withOpacity(0.85),
-                                            fontSize: 14,
-                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                          (item['name'] ?? 'سرور Xray')
+                                              .toString(),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w500,
                                           ),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.all(8),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: pingLoading
                                               ? Colors.white10
-                                              : (ping > 0 ? const Color(0xFF064E3B) : const Color(0xFF7F1D1D)),
-                                          borderRadius: BorderRadius.circular(12),
+                                              : ping > 0
+                                                  ? const Color(0xFF2E5A3C)
+                                                  : const Color(0xFF613137),
+                                          borderRadius:
+                                              BorderRadius.circular(10),
                                         ),
                                         child: Text(
-                                          pingLoading ? '...' : (ping > 0 ? '${ping}ms' : '-1ms'),
+                                          pingLoading
+                                              ? '...'
+                                              : ping > 0
+                                                  ? '${ping}ms'
+                                                  : '-1ms',
                                           style: TextStyle(
-                                            color: pingLoading ? Colors.white54 : (ping > 0 ? Colors.greenAccent : Colors.redAccent),
+                                            color: pingLoading
+                                                ? Colors.white54
+                                                : ping > 0
+                                                    ? const Color(0xFF81C784)
+                                                    : const Color(0xFFE57373),
                                             fontSize: 11,
                                             fontWeight: FontWeight.bold,
-                                            fontFamily: 'monospace',
                                           ),
                                         ),
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
-                              );
-                            },
-                          ),
-              ),
-
-              // نوار ناوبری پایین صفحه (Bottom Navigation Bar)
-              Container(
-                color: const Color(0xFF030712).withOpacity(0.95),
-                height: 65,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    InkWell(
-                      onTap: _fetchConfigs,
-                      child: const Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.file_download_outlined, color: Color(0xFF38BDF8), size: 20),
-                          SizedBox(height: 2),
-                          Text('Get Config', style: TextStyle(color: Colors.white54, fontSize: 10)),
-                        ],
+                              ),
+                            ),
+                          );
+                        },
                       ),
-                    ),
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          maxGb > 0
-                              ? 'حجم: ${usedGb.toStringAsFixed(2)} / ${maxGb.toStringAsFixed(1)} GB'
-                              : 'حجم: نامحدود',
-                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'اعتبار: $_remainingTimeText',
-                          style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 10),
-                        ),
-                      ],
-                    ),
-                    InkWell(
-                      onTap: _isTestingAllPings ? null : _testAllPings,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.bolt_rounded, color: _isTestingAllPings ? Colors.amber : const Color(0xFF38BDF8), size: 20),
-                          SizedBox(height: 2),
-                          Text(_isTestingAllPings ? 'Testing...' : 'Test', style: const TextStyle(color: Colors.white54, fontSize: 10)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ),
+          Container(
+            color: const Color(0xFF28314A),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 10,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.circle,
+                  size: 12,
+                  color: _isConnected
+                      ? Colors.greenAccent
+                      : Colors.redAccent,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _isConnected ? 'CONNECTED' : 'DISCONNECTED',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 45),
+        child: FloatingActionButton(
+          backgroundColor: _isConnected
+              ? const Color(0xFF4CAF50)
+              : const Color(0xFFB0BEC5),
+          onPressed: _toggleMainConnection,
+          child: _isConnectingProcess
+              ? const CircularProgressIndicator(color: Colors.white)
+              : Icon(
+                  Icons.power_settings_new,
+                  color: _isConnected
+                      ? Colors.white
+                      : const Color(0xFF1B1D29),
+                  size: 30,
+                ),
+        ),
+      ),
+      bottomNavigationBar: Container(
+        color: const Color(0xFF151821),
+        height: 60,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            InkWell(
+              onTap: _fetchConfigs,
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.file_download_outlined,
+                    color: Colors.white54,
+                    size: 20,
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Get Config',
+                    style: TextStyle(
+                      color: Colors.white54,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  maxGb > 0
+                      ? 'حجم: ${usedGb.toStringAsFixed(2)} / '
+                          '${maxGb.toStringAsFixed(1)} GB'
+                      : 'حجم: نامحدود',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.87),
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'اعتبار: $_remainingTimeText',
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+            InkWell(
+              onTap: _isTestingAllPings ? null : _testAllPings,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.bolt,
+                    color: _isTestingAllPings
+                        ? Colors.amber
+                        : Colors.white54,
+                    size: 20,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _isTestingAllPings ? 'Testing...' : 'Test',
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
