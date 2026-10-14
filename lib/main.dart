@@ -388,8 +388,9 @@ class _ServerListScreenState extends State<ServerListScreen>
     await _fetchUserDataAndCheck();
 
     _userCheckTimer?.cancel();
+    // بروزرسانی بازه زمانی بررسی وضعیت کاربر به هر ۳ دقیقه
     _userCheckTimer = Timer.periodic(
-      const Duration(seconds: 2),
+      const Duration(minutes: 3),
       (_) {
         if (!mounted || _logoutInProgress) return;
         _fetchUserDataAndCheck();
@@ -625,7 +626,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     final maxGb =
         double.tryParse(_userData!['max_volume_gb']?.toString() ?? '0') ?? 0;
 
-    // حساب‌های نامحدود از این بخش مصرف محدودشده را گزارش نمی‌کنند.
     if (maxGb <= 0) return;
 
     if (!_trafficBaselineInitialized) {
@@ -635,7 +635,6 @@ class _ServerListScreenState extends State<ServerListScreen>
       return;
     }
 
-    // اگر شمارنده هسته ریست شد، مقدار جدید baseline است.
     if (currentDownload < _lastSessionDownload ||
         currentUpload < _lastSessionUpload) {
       _lastSessionDownload = currentDownload;
@@ -827,8 +826,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     return rawUrl.trim().replaceFirst('\uFEFF', '').trim();
   }
 
-  /// Query را از متن خام URL می‌خواند تا '+' در پارامترهایی مثل
-  /// بعضی مقادیر Base64 به فاصله تبدیل نشود.
   Map<String, String> _rawQueryParametersPreservePlus(Uri uri) {
     final result = <String, String>{};
     final raw = uri.hasQuery ? uri.query : '';
@@ -940,12 +937,8 @@ class _ServerListScreenState extends State<ServerListScreen>
           ['pcs', 'pinnedPeerCertSha256'],
         );
 
-        // pcs در نسخه‌های مختلف هسته/پلاگین ممکن است با قالب متفاوتی
-        // پردازش شود؛ اینجا رشته خام نگه داشته می‌شود تا به آرایه
-        // دلخواه و ناسازگار تبدیل نشود.
         if (pcs.isNotEmpty) tls['pinnedPeerCertSha256'] = pcs;
 
-        // عمداً allowInsecure اضافه نمی‌شود؛ اعتبارسنجی TLS غیرفعال نمی‌شود.
         tls.remove('allowInsecure');
 
         stream['security'] = 'tls';
@@ -985,6 +978,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
   }
 
+  // اضافه شدن تنظیمات Mux به صورت پیش‌فرض جهت افزایش سرعت و پایداری اتصال
   Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
     return {
       'log': {'loglevel': 'warning'},
@@ -1001,6 +995,10 @@ class _ServerListScreenState extends State<ServerListScreen>
         }
       ],
       'outbounds': [outbound],
+      'mux': {
+        'enabled': true,
+        'concurrency': 8,
+      },
     };
   }
 
@@ -1011,7 +1009,6 @@ class _ServerListScreenState extends State<ServerListScreen>
       throw const FormatException('Config is empty');
     }
 
-    // اگر خود سرور JSON کامل داده باشد، آن را دست‌نخورده نگه می‌داریم.
     try {
       final decodedJson = json.decode(configUrl);
       if (decodedJson is Map || decodedJson is List) {
@@ -1019,7 +1016,6 @@ class _ServerListScreenState extends State<ServerListScreen>
       }
     } catch (_) {}
 
-    // بعضی APIها لینک اشتراک را به شکل Base64 برمی‌گردانند.
     if (!configUrl.contains('://') &&
         !configUrl.startsWith('{') &&
         !configUrl.startsWith('[')) {
@@ -1055,7 +1051,6 @@ class _ServerListScreenState extends State<ServerListScreen>
       }
     }
 
-    // دوباره JSON را بررسی می‌کنیم؛ ممکن است پس از Base64 باز شده باشد.
     try {
       final decodedJson = json.decode(configUrl);
       if (decodedJson is Map || decodedJson is List) {
@@ -1076,9 +1071,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     final network = _firstQueryValue(query, ['type', 'network']).toLowerCase();
     final security = _firstQueryValue(query, ['security']).toLowerCase();
 
-    // WebSocket را دستی می‌سازیم تا Host و path دقیقاً از لینک حفظ شوند.
-    // این مسیر مخصوص لینک‌های VLESS/VMess/Trojan با type=ws است؛ سایر
-    // پروتکل‌ها همچنان از parser رسمی پایین‌تر عبور می‌کنند.
     if (network == 'ws' &&
         (scheme == 'vless' || scheme == 'vmess' || scheme == 'trojan')) {
       final serverHost = uri.host;
@@ -1095,7 +1087,6 @@ class _ServerListScreenState extends State<ServerListScreen>
           : serverHost;
       final pathValue = _firstQueryValue(query, ['path']);
       final path = pathValue.isNotEmpty ? pathValue : '/';
-      // security= خالی باید مانند لینک بدون TLS تفسیر شود.
       final wsSecurity = security.isEmpty ? 'none' : security;
 
       final outbound = <String, dynamic>{
@@ -1106,8 +1097,6 @@ class _ServerListScreenState extends State<ServerListScreen>
           'security': wsSecurity,
           'wsSettings': <String, dynamic>{
             'path': path,
-            // هر دو شکل را تنظیم می‌کنیم تا نسخه‌های مختلف Xray
-            // مقدار Host را به‌درستی دریافت کنند.
             'host': transportHost,
             'headers': <String, dynamic>{'Host': transportHost},
           },
@@ -1193,8 +1182,6 @@ class _ServerListScreenState extends State<ServerListScreen>
       return json.encode(_baseConfig(outbound));
     }
 
-    // XHTTP/SplitHTTP را دستی می‌سازیم تا پارامترهای path، host، mode و extra
-    // در فرمت‌های متداول از بین نروند.
     if (network == 'xhttp' || network == 'splithttp') {
       final protocol = scheme == 'vmess'
           ? 'vmess'
@@ -1284,9 +1271,7 @@ class _ServerListScreenState extends State<ServerListScreen>
       if (extra != null && extra.trim().isNotEmpty) {
         try {
           xhttp['extra'] = json.decode(extra);
-        } catch (_) {
-          // اگر extra یک JSON معتبر نباشد، آن را وارد تنظیمات نمی‌کنیم.
-        }
+        } catch (_) {}
       }
 
       if (security == 'tls') {
@@ -1349,9 +1334,6 @@ class _ServerListScreenState extends State<ServerListScreen>
       return json.encode(_baseConfig(outbound));
     }
 
-    // پروتکل‌هایی که خود پلاگین می‌شناسد از parser رسمی عبور می‌کنند.
-    // این مسیر برای VLESS، VMess، Trojan، Shadowsocks و پروتکل‌های
-    // پشتیبانی‌شده در نسخه نصب‌شده حفظ شده است.
     final parser = V2ray.parseFromURL(configUrl);
     final generated = parser.getFullConfiguration();
 
@@ -1521,7 +1503,6 @@ class _ServerListScreenState extends State<ServerListScreen>
         }
       } catch (_) {}
 
-      // لاگ امن: اطلاعات احراز هویت/UUID کانفیگ را چاپ نمی‌کنیم.
       debugPrint('V2Ray: starting profile="$remark"');
       final debugUri = Uri.tryParse(_cleanUrl(rawUrl));
       final debugNetwork = debugUri == null
@@ -1542,8 +1523,6 @@ class _ServerListScreenState extends State<ServerListScreen>
         proxyOnly: false,
       );
 
-      // برگشتن startV2Ray به‌تنهایی به معنی اتصال موفق به سرور نیست.
-      // فقط رویداد CONNECTED از هسته اجازه می‌دهد UI متصل نشان داده شود.
       await Future<void>.delayed(const Duration(seconds: 4));
       if (!mounted || _userWantsDisconnect) return;
 
