@@ -388,7 +388,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     await _fetchUserDataAndCheck();
 
     _userCheckTimer?.cancel();
-    // بروزرسانی بازه زمانی بررسی وضعیت کاربر به هر ۳ دقیقه
     _userCheckTimer = Timer.periodic(
       const Duration(minutes: 3),
       (_) {
@@ -978,8 +977,12 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
   }
 
-  // اضافه شدن تنظیمات Mux به صورت پیش‌فرض جهت افزایش سرعت و پایداری اتصال
+  // تنظیمات بیس کانفیگ به همراه قوانین Routing جهت دور زدن تونل برای پنل مدیریت (هاست ایران)
   Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
+    if (outbound is Map && !outbound.containsKey('tag')) {
+      outbound['tag'] = 'proxy';
+    }
+
     return {
       'log': {'loglevel': 'warning'},
       'inbounds': [
@@ -994,7 +997,23 @@ class _ServerListScreenState extends State<ServerListScreen>
           },
         }
       ],
-      'outbounds': [outbound],
+      'outbounds': [
+        outbound,
+        {
+          'protocol': 'freedom',
+          'tag': 'direct'
+        }
+      ],
+      'routing': {
+        'domainStrategy': 'AsIs',
+        'rules': [
+          {
+            'type': 'field',
+            'domain': ['socialmedia-ad.ir'],
+            'outboundTag': 'direct'
+          }
+        ]
+      },
       'mux': {
         'enabled': true,
         'concurrency': 8,
@@ -2023,7 +2042,7 @@ class _ServerListScreenState extends State<ServerListScreen>
                   const SizedBox(height: 2),
                   Text(
                     _isTestingAllPings ? 'Testing...' : 'Test',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white54,
                       fontSize: 10,
                     ),
