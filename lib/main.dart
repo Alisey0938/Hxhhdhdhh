@@ -278,6 +278,26 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                 ),
               ),
+              const SizedBox(height: 16),
+              // دکمه ورود به فروشگاه برای کاربرانی که اکانت ندارند
+              TextButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const StoreScreen(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.shopping_bag_outlined, color: Color(0xFF8B9BB4)),
+                label: const Text(
+                  'خرید آنلاین اشتراک (فروشگاه)',
+                  style: TextStyle(
+                    color: Color(0xFF8B9BB4),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -977,7 +997,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
   }
 
-  // تنظیمات بیس کانفیگ به همراه قوانین Routing جهت دور زدن تونل برای پنل مدیریت (هاست ایران)
   Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
     if (outbound is Map && !outbound.containsKey('tag')) {
       outbound['tag'] = 'proxy';
@@ -2072,7 +2091,6 @@ class _ServerListScreenState extends State<ServerListScreen>
   }
 }
 
-
 class StoreScreen extends StatefulWidget {
   const StoreScreen({super.key});
   @override
@@ -2158,7 +2176,7 @@ class _StoreScreenState extends State<StoreScreen> {
           TextField(controller:_username, autocorrect:false, decoration:const InputDecoration(labelText:'نام کاربری دلخواه',filled:true, border:OutlineInputBorder()),),
           const SizedBox(height:10), TextField(controller:_password, obscureText:true, autocorrect:false, decoration:const InputDecoration(labelText:'رمز عبور دلخواه (حداقل ۶ نویسه)',filled:true,border:OutlineInputBorder()),),
           const SizedBox(height:12),
-          const Text('برای جلوگیری از ساخت حساب بدون پرداخت، حساب فقط پس از تأیید پرداخت توسط سرور ایجاد می‌شود.',style:TextStyle(color:Colors.white60,fontSize:12)),
+          const Text('بعد از پرداخت به اپ برگردید و بررسی وضعیت را یزنید ',style:TextStyle(color:Colors.white60,fontSize:12)),
           const SizedBox(height:12),
           ..._plans.map((p) => Padding(padding:const EdgeInsets.only(bottom:8), child:SizedBox(width:double.infinity, child:ElevatedButton.icon(onPressed:_busy?null:()=>_buy(p), icon:const Icon(Icons.payment), label:Text('خرید ${p['title']}'), style:ElevatedButton.styleFrom(backgroundColor:const Color(0xFF3B4261),padding:const EdgeInsets.all(14)))))),
           if (_orderId != null) OutlinedButton.icon(onPressed:_busy?null:_checkOrder, icon:const Icon(Icons.verified_outlined), label:const Text('بررسی وضعیت پرداخت')),
