@@ -279,7 +279,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              // دکمه ورود به فروشگاه برای کاربرانی که اکانت ندارند
               TextButton.icon(
                 onPressed: () {
                   Navigator.push(
@@ -997,6 +996,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
   }
 
+  // ---- بخش بهینه‌شده برای رفع کندی و اختلال اینستاگرام ----
   Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
     if (outbound is Map && !outbound.containsKey('tag')) {
       outbound['tag'] = 'proxy';
@@ -1004,6 +1004,14 @@ class _ServerListScreenState extends State<ServerListScreen>
 
     return {
       'log': {'loglevel': 'warning'},
+      // اضافه کردن DNS اختصاصی برای سرعت بالای حل دامنه‌ها و رفع تاخیر اینستاگرام
+      'dns': {
+        'servers': [
+          '1.1.1.1',
+          '8.8.8.8',
+          'localhost'
+        ]
+      },
       'inbounds': [
         {
           'listen': '127.0.0.1',
@@ -1013,6 +1021,7 @@ class _ServerListScreenState extends State<ServerListScreen>
           'sniffing': {
             'enabled': true,
             'destOverride': ['http', 'tls', 'quic'],
+            'metadataOnly': false,
           },
         }
       ],
@@ -1024,7 +1033,8 @@ class _ServerListScreenState extends State<ServerListScreen>
         }
       ],
       'routing': {
-        'domainStrategy': 'AsIs',
+        // تغییر استراتژی بهینه‌تر برای روتینگ بدون تأخیر
+        'domainStrategy': 'IPIfNonMatch',
         'rules': [
           {
             'type': 'field',
@@ -1033,10 +1043,7 @@ class _ServerListScreenState extends State<ServerListScreen>
           }
         ]
       },
-      'mux': {
-        'enabled': true,
-        'concurrency': 8,
-      },
+      // حذف کامل Mux (Multiplexing) جهت برطرف شدن افت سرعت، باگ‌ها و قطعی‌های اینستاگرام
     };
   }
 
