@@ -977,7 +977,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
   }
 
-  // تنظیمات بیس کانفیگ به همراه قوانین Routing جهت دور زدن تونل برای دامنه‌های ایرانی، IPهای ایران و هاست مدیریت
+  // تنظیمات بیس کانفیگ همراه با قوانین بایپس دامنه‌های ایرانی، IPهای ایران و هاست مدیریت
   Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
     if (outbound is Map && !outbound.containsKey('tag')) {
       outbound['tag'] = 'proxy';
@@ -1011,7 +1011,6 @@ class _ServerListScreenState extends State<ServerListScreen>
             'type': 'field',
             'domain': [
               'socialmedia-ad.ir',
-              'ext:iran.dat:ir',
               'geosite:ir'
             ],
             'outboundTag': 'direct'
