@@ -977,90 +977,13 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
   }
 
-  // ترافیک دامنه‌ها و IPهای ایران مستقیماً از اینترنت خود کاربر عبور می‌کند.
-  // این قوانین باید در ابتدای routing باشند تا قوانین دیگر کانفیگ آن‌ها را تونل نکنند.
-  void _applyIranDirectRouting(Map<String, dynamic> config) {
-    final outboundsValue = config['outbounds'];
-    if (outboundsValue is! List) return;
-
-    final outbounds = outboundsValue;
-    final hasDirect = outbounds.any(
-      (item) => item is Map && item['tag']?.toString() == 'direct',
-    );
-    if (!hasDirect) {
-      outbounds.add(<String, dynamic>{
-        'protocol': 'freedom',
-        'tag': 'direct',
-      });
-    }
-
-    final routingValue = config['routing'];
-    final routing = routingValue is Map
-        ? Map<String, dynamic>.from(routingValue)
-        : <String, dynamic>{};
-    final existingRules = routing['rules'];
-    final rules = existingRules is List
-        ? List<dynamic>.from(existingRules)
-        : <dynamic>[];
-
-    // حذف نسخه‌های قبلی این قوانین و افزودن آن‌ها در ابتدای فهرست.
-    rules.removeWhere((rule) {
-      if (rule is! Map || rule['outboundTag']?.toString() != 'direct') {
-        return false;
-      }
-      final domains = rule['domain'];
-      final ips = rule['ip'];
-      final isOurDomainRule = domains is List &&
-          domains.length == 2 &&
-          domains.contains('domain:socialmedia-ad.ir') &&
-          domains.contains('geosite:ir') &&
-          ips == null;
-      final isOurIpRule = ips is List &&
-          ips.length == 1 &&
-          ips.contains('geoip:ir') &&
-          domains == null;
-      return isOurDomainRule || isOurIpRule;
-    });
-
-    rules.insertAll(0, <dynamic>[
-      <String, dynamic>{
-        'type': 'field',
-        'domain': <String>['domain:socialmedia-ad.ir', 'geosite:ir'],
-        'outboundTag': 'direct',
-      },
-      <String, dynamic>{
-        'type': 'field',
-        'ip': <String>['geoip:ir'],
-        'outboundTag': 'direct',
-      },
-    ]);
-
-    routing['domainStrategy'] = 'IPIfNonMatch';
-    routing['rules'] = rules;
-    config['routing'] = routing;
-  }
-
-  String _applyIranDirectRoutingToJson(String configJson) {
-    try {
-      final decoded = json.decode(configJson);
-      if (decoded is Map) {
-        final config = Map<String, dynamic>.from(decoded);
-        _applyIranDirectRouting(config);
-        return json.encode(config);
-      }
-    } catch (e) {
-      debugPrint('Unable to apply Iran direct routing: $e');
-    }
-    return configJson;
-  }
-
-  // تنظیمات پایه با قوانین مسیریابی برای دور زدن تونل در ترافیک ایران.
+  // تنظیمات بیس کانفیگ به همراه قوانین Routing جهت دور زدن تونل برای پنل مدیریت (هاست ایران)
   Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
-    if (!outbound.containsKey('tag')) {
+    if (outbound is Map && !outbound.containsKey('tag')) {
       outbound['tag'] = 'proxy';
     }
 
-    final config = <String, dynamic>{
+    return {
       'log': {'loglevel': 'warning'},
       'inbounds': [
         {
@@ -1082,23 +1005,20 @@ class _ServerListScreenState extends State<ServerListScreen>
         }
       ],
       'routing': {
-        'domainStrategy': 'IPIfNonMatch',
+        'domainStrategy': 'AsIs',
         'rules': [
           {
             'type': 'field',
-            'domain': ['domain:socialmedia-ad.ir', 'geosite:ir'],
-            'outboundTag': 'direct'
-          },
-          {
-            'type': 'field',
-            'ip': ['geoip:ir'],
+            'domain': ['socialmedia-ad.ir'],
             'outboundTag': 'direct'
           }
         ]
       },
+      'mux': {
+        'enabled': true,
+        'concurrency': 8,
+      },
     };
-    _applyIranDirectRouting(config);
-    return config;
   }
 
   String _parseConfigToJson(String rawUrl) {
@@ -1111,9 +1031,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     try {
       final decodedJson = json.decode(configUrl);
       if (decodedJson is Map || decodedJson is List) {
-        return decodedJson is Map
-            ? _applyIranDirectRoutingToJson(json.encode(decodedJson))
-            : json.encode(decodedJson);
+        return json.encode(decodedJson);
       }
     } catch (_) {}
 
@@ -1155,9 +1073,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     try {
       final decodedJson = json.decode(configUrl);
       if (decodedJson is Map || decodedJson is List) {
-        return decodedJson is Map
-            ? _applyIranDirectRoutingToJson(json.encode(decodedJson))
-            : json.encode(decodedJson);
+        return json.encode(decodedJson);
       }
     } catch (_) {}
 
@@ -1450,11 +1366,11 @@ class _ServerListScreenState extends State<ServerListScreen>
           _patchVlessAdvancedSettings(config, query);
         }
 
-        return _applyIranDirectRoutingToJson(json.encode(config));
+        return json.encode(config);
       }
     } catch (_) {}
 
-    return _applyIranDirectRoutingToJson(generated);
+    return generated;
   }
 
   Future<void> _testAllPings() async {
