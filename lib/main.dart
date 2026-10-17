@@ -1046,7 +1046,7 @@ class _ServerListScreenState extends State<ServerListScreen>
       if (decoded is Map) {
         final config = Map<String, dynamic>.from(decoded);
         _applyIranDirectRouting(config);
-        return _applyIranDirectRoutingToJson(json.encode(config));
+        return json.encode(config);
       }
     } catch (e) {
       debugPrint('Unable to apply Iran direct routing: $e');
@@ -1096,16 +1096,12 @@ class _ServerListScreenState extends State<ServerListScreen>
           }
         ]
       },
-      'mux': {
-        'enabled': true,
-        'concurrency': 8,
-      },
     };
     _applyIranDirectRouting(config);
     return config;
   }
 
-    String _parseConfigToJson(String rawUrl) {
+  String _parseConfigToJson(String rawUrl) {
     var configUrl = _cleanUrl(rawUrl);
 
     if (configUrl.isEmpty) {
@@ -1116,7 +1112,8 @@ class _ServerListScreenState extends State<ServerListScreen>
       final decodedJson = json.decode(configUrl);
       if (decodedJson is Map || decodedJson is List) {
         return decodedJson is Map
-            ? _applyIranDirectRoutingToJson(json.encode(decodedJson))\n            : json.encode(decodedJson);
+            ? _applyIranDirectRoutingToJson(json.encode(decodedJson))
+            : json.encode(decodedJson);
       }
     } catch (_) {}
 
@@ -1159,7 +1156,8 @@ class _ServerListScreenState extends State<ServerListScreen>
       final decodedJson = json.decode(configUrl);
       if (decodedJson is Map || decodedJson is List) {
         return decodedJson is Map
-            ? _applyIranDirectRoutingToJson(json.encode(decodedJson))\n            : json.encode(decodedJson);
+            ? _applyIranDirectRoutingToJson(json.encode(decodedJson))
+            : json.encode(decodedJson);
       }
     } catch (_) {}
 
