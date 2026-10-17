@@ -278,25 +278,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                 ),
               ),
-              const SizedBox(height: 16),
-              TextButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const StoreScreen(),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.shopping_bag_outlined, color: Color(0xFF8B9BB4)),
-                label: const Text(
-                  'خرید آنلاین اشتراک (فروشگاه)',
-                  style: TextStyle(
-                    color: Color(0xFF8B9BB4),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
             ],
           ),
         ),
@@ -996,7 +977,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
   }
 
-  // ---- بخش بهینه‌شده برای رفع کندی و اختلال اینستاگرام ----
+  // تنظیمات بیس کانفیگ به همراه قوانین Routing جهت دور زدن تونل برای پنل مدیریت (هاست ایران)
   Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
     if (outbound is Map && !outbound.containsKey('tag')) {
       outbound['tag'] = 'proxy';
@@ -1004,14 +985,6 @@ class _ServerListScreenState extends State<ServerListScreen>
 
     return {
       'log': {'loglevel': 'warning'},
-      // اضافه کردن DNS اختصاصی برای سرعت بالای حل دامنه‌ها و رفع تاخیر اینستاگرام
-      'dns': {
-        'servers': [
-          '1.1.1.1',
-          '8.8.8.8',
-          'localhost'
-        ]
-      },
       'inbounds': [
         {
           'listen': '127.0.0.1',
@@ -1021,7 +994,6 @@ class _ServerListScreenState extends State<ServerListScreen>
           'sniffing': {
             'enabled': true,
             'destOverride': ['http', 'tls', 'quic'],
-            'metadataOnly': false,
           },
         }
       ],
@@ -1033,8 +1005,7 @@ class _ServerListScreenState extends State<ServerListScreen>
         }
       ],
       'routing': {
-        // تغییر استراتژی بهینه‌تر برای روتینگ بدون تأخیر
-        'domainStrategy': 'IPIfNonMatch',
+        'domainStrategy': 'AsIs',
         'rules': [
           {
             'type': 'field',
@@ -1043,7 +1014,10 @@ class _ServerListScreenState extends State<ServerListScreen>
           }
         ]
       },
-      // حذف کامل Mux (Multiplexing) جهت برطرف شدن افت سرعت، باگ‌ها و قطعی‌های اینستاگرام
+      'mux': {
+        'enabled': true,
+        'concurrency': 8,
+      },
     };
   }
 
@@ -2054,21 +2028,6 @@ class _ServerListScreenState extends State<ServerListScreen>
               ],
             ),
             InkWell(
-              onTap: () {
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const StoreScreen(),
-                ));
-              },
-              child: const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.shopping_bag_outlined, color: Color(0xFF8B9BB4), size: 20),
-                  SizedBox(height: 2),
-                  Text('فروشگاه', style: TextStyle(color: Color(0xFF8B9BB4), fontSize: 10)),
-                ],
-              ),
-            ),
-            InkWell(
               onTap: _isTestingAllPings ? null : _testAllPings,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -2096,113 +2055,4 @@ class _ServerListScreenState extends State<ServerListScreen>
       ),
     );
   }
-}
-
-class StoreScreen extends StatefulWidget {
-  const StoreScreen({super.key});
-  @override
-  State<StoreScreen> createState() => _StoreScreenState();
-}
-
-class _StoreScreenState extends State<StoreScreen> {
-  static const String apiBase = 'https://socialmedia-ad.ir/index.php';
-  List<Map<String, dynamic>> _plans = [];
-  bool _loading = true;
-  bool _busy = false;
-  String? _orderId;
-  Map<String, dynamic>? _receipt;
-  final _username = TextEditingController();
-  final _password = TextEditingController();
-
-  @override
-  void initState() { super.initState(); _loadPlans(); }
-  @override
-  void dispose() { _username.dispose(); _password.dispose(); super.dispose(); }
-
-  Future<void> _loadPlans() async {
-    try {
-      final r = await http.get(Uri.parse('$apiBase?action=shop_get_plans')).timeout(const Duration(seconds: 20));
-      final d = json.decode(r.body);
-      if (r.statusCode == 200 && d is List && mounted) setState(() { _plans = d.whereType<Map>().map((e) => Map<String,dynamic>.from(e)).toList(); _loading = false; });
-      else if (mounted) setState(() => _loading = false);
-    } catch (_) { if (mounted) setState(() => _loading = false); }
-  }
-
-  Future<void> _buy(Map<String, dynamic> plan) async {
-    final username = _username.text.trim(); final password = _password.text;
-    if (!RegExp(r'^[A-Za-z0-9_.-]{3,32}$').hasMatch(username) || password.length < 6) {
-      _message('نام کاربری انگلیسی ۳ تا ۳۲ نویسه و رمز عبور حداقل ۶ نویسه باشد.'); return;
-    }
-    setState(() => _busy = true);
-    try {
-      final r = await http.post(Uri.parse('$apiBase?action=shop_create_order'), headers: {'Content-Type':'application/json'}, body: json.encode({'plan_id':plan['id'],'username':username,'password':password})).timeout(const Duration(seconds:25));
-      final d = json.decode(r.body);
-      if (d is! Map || d['status'] != 'success' || (d['payment_url'] ?? '').toString().isEmpty) { _message(d is Map ? (d['message']?.toString() ?? 'ساخت پرداخت ناموفق بود.') : 'پاسخ سرور معتبر نیست.'); return; }
-      _orderId = d['order_id'].toString();
-      final uri = Uri.tryParse(d['payment_url'].toString());
-      if (uri == null || !['https'].contains(uri.scheme) || uri.host != 'pay.tomanpay.online') { _message('آدرس پرداخت معتبر نیست.'); return; }
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (mounted) _message('پس از پرداخت به اپ برگردید و «بررسی وضعیت پرداخت» را بزنید.');
-    } catch (_) { _message('ارتباط با سرور برقرار نشد. دوباره تلاش کنید.'); }
-    finally { if (mounted) setState(() => _busy = false); }
-  }
-
-  Future<void> _checkOrder() async {
-    if (_orderId == null) { _message('ابتدا یک پلن را برای خرید انتخاب کنید.'); return; }
-    setState(() => _busy = true);
-    try {
-      final r = await http.get(Uri.parse('$apiBase?action=shop_check_order&id=${Uri.encodeQueryComponent(_orderId!)}')).timeout(const Duration(seconds:20));
-      final d = json.decode(r.body);
-      if (d is Map && d['status'] == 'success') { if (mounted) setState(() => _receipt = Map<String,dynamic>.from(d)); }
-      else { _message(d is Map ? (d['message']?.toString() ?? 'پرداخت هنوز تأیید نشده است.') : 'پرداخت هنوز تأیید نشده است.'); }
-    } catch (_) { _message('بررسی پرداخت ناموفق بود. دوباره تلاش کنید.'); }
-    finally { if (mounted) setState(() => _busy = false); }
-  }
-
-  void _message(String m) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), backgroundColor: const Color(0xFF3B4261))); }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('فروشگاه HUSKY VPN'), centerTitle: true),
-      body: _loading ? const Center(child:CircularProgressIndicator()) : _receipt != null ? _buildReceipt() : ListView(
-        padding: const EdgeInsets.all(16), children: [
-          const Text('پلن اشتراک خود را انتخاب کنید', style: TextStyle(fontSize:19,fontWeight:FontWeight.bold)),
-          const SizedBox(height:12),
-          if (_plans.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Text('در حال حاضر پلنی برای فروش ثبت نشده است.')),
-          ..._plans.map((p) => Card(color:const Color(0xFF222536), child: Padding(padding:const EdgeInsets.all(16), child: Column(crossAxisAlignment:CrossAxisAlignment.start, children:[
-            Text((p['title'] ?? 'اشتراک VPN').toString(),style:const TextStyle(fontSize:17,fontWeight:FontWeight.bold)),
-            if ((p['description'] ?? '').toString().isNotEmpty) Padding(padding:const EdgeInsets.only(top:6),child:Text(p['description'].toString())),
-            const SizedBox(height:10),
-            Text('حجم: ${p['volume_gb']} گیگابایت  •  مدت: ${p['duration_days']} روز  •  تعداد کاربر/دستگاه: ${p['max_devices']}'),
-            const SizedBox(height:8), Text('${p['price_toman']} تومان',style:const TextStyle(color:Color(0xFF9FB6FF),fontSize:17,fontWeight:FontWeight.bold)),
-          ])))),
-          const SizedBox(height:12),
-          const Text('اطلاعات حساب جدید',style:TextStyle(fontSize:17,fontWeight:FontWeight.bold)),
-          const SizedBox(height:8),
-          TextField(controller:_username, autocorrect:false, decoration:const InputDecoration(labelText:'نام کاربری دلخواه',filled:true, border:OutlineInputBorder()),),
-          const SizedBox(height:10), TextField(controller:_password, obscureText:true, autocorrect:false, decoration:const InputDecoration(labelText:'رمز عبور دلخواه (حداقل ۶ نویسه)',filled:true,border:OutlineInputBorder()),),
-          const SizedBox(height:12),
-          const Text('بعد از پرداخت به اپ برگردید و بررسی وضعیت را یزنید ',style:TextStyle(color:Colors.white60,fontSize:12)),
-          const SizedBox(height:12),
-          ..._plans.map((p) => Padding(padding:const EdgeInsets.only(bottom:8), child:SizedBox(width:double.infinity, child:ElevatedButton.icon(onPressed:_busy?null:()=>_buy(p), icon:const Icon(Icons.payment), label:Text('خرید ${p['title']}'), style:ElevatedButton.styleFrom(backgroundColor:const Color(0xFF3B4261),padding:const EdgeInsets.all(14)))))),
-          if (_orderId != null) OutlinedButton.icon(onPressed:_busy?null:_checkOrder, icon:const Icon(Icons.verified_outlined), label:const Text('بررسی وضعیت پرداخت')),
-          if (_busy) const Center(child:Padding(padding:EdgeInsets.all(12),child:CircularProgressIndicator())),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildReceipt() {
-    final d = _receipt!;
-    return Center(child:SingleChildScrollView(padding:const EdgeInsets.all(24),child:Card(color:const Color(0xFF222536),child:Padding(padding:const EdgeInsets.all(22),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
-      const Center(child:Icon(Icons.check_circle,color:Colors.greenAccent,size:58)),
-      const SizedBox(height:12), const Center(child:Text('پرداخت موفق و حساب ساخته شد',style:TextStyle(fontSize:19,fontWeight:FontWeight.bold))),
-      const SizedBox(height:20),
-      _receiptLine('نام کاربری',d['username']), _receiptLine('رمز عبور',d['password']), _receiptLine('حجم', '${d['volume_gb']} گیگابایت'), _receiptLine('مدت', '${d['duration_days']} روز'), _receiptLine('تعداد کاربر/دستگاه',d['max_devices']), _receiptLine('تاریخ انقضا',d['expire_at'] ?? '—'), _receiptLine('کد پیگیری',d['tracking_number'] ?? '—'),
-      const SizedBox(height:16), const Text('این اطلاعات را در جای امن نگه دارید.',style:TextStyle(color:Colors.white60)),
-      const SizedBox(height:12), SizedBox(width:double.infinity,child:ElevatedButton(onPressed:()=>Navigator.pop(context),child:const Text('بازگشت به اپ'))),
-    ])))));
-  }
-  Widget _receiptLine(String label, dynamic value) => Padding(padding:const EdgeInsets.symmetric(vertical:5),child:Row(children:[SizedBox(width:145,child:Text('$label: ',style:const TextStyle(color:Colors.white60))),Expanded(child:SelectableText((value ?? '—').toString(),style:const TextStyle(fontWeight:FontWeight.w600)))]));
 }
