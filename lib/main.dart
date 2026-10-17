@@ -977,7 +977,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
   }
 
-  // تنظیمات بیس کانفیگ همراه با قوانین بایپس دامنه‌های ایرانی، IPهای ایران و هاست مدیریت
+  // تنظیمات بیس کانفیگ به همراه قوانین Routing جهت دور زدن تونل برای پنل مدیریت (هاست ایران)
   Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
     if (outbound is Map && !outbound.containsKey('tag')) {
       outbound['tag'] = 'proxy';
@@ -1005,31 +1005,18 @@ class _ServerListScreenState extends State<ServerListScreen>
         }
       ],
       'routing': {
-        'domainStrategy': 'IPOnDemand',
+        'domainStrategy': 'AsIs',
         'rules': [
           {
             'type': 'field',
-            'domain': [
-              'socialmedia-ad.ir',
-              'geosite:ir'
-            ],
-            'outboundTag': 'direct'
-          },
-          {
-            'type': 'field',
-            'ip': [
-              'geoip:ir',
-              '10.0.0.0/8',
-              '172.16.0.0/12',
-              '192.168.0.0/16',
-              '127.0.0.0/8'
-            ],
+            'domain': ['socialmedia-ad.ir'],
             'outboundTag': 'direct'
           }
         ]
       },
       'mux': {
-        'enabled': false,
+        'enabled': true,
+        'concurrency': 8,
       },
     };
   }
