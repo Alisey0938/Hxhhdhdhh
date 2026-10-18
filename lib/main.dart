@@ -1447,17 +1447,36 @@ class _ServerListScreenState extends State<ServerListScreen>
           'congestion': false,
           'readBufferSize': 1,
           'writeBufferSize': 1,
-          'header': <String, dynamic>{
-            'type': headerType.isEmpty ? 'none' : headerType,
-          },
-          if (seed.isNotEmpty) 'seed': seed,
         };
+        // Xray 26 removed kcp "header"/"seed"; they became "finalmask" UDP masks.
+        const kcpHeaderMasks = {
+          'srtp': 'header-srtp',
+          'utp': 'header-utp',
+          'wechat-video': 'header-wechat',
+          'dtls': 'header-dtls',
+          'wireguard': 'header-wireguard',
+          'dns': 'header-dns',
+        };
+        final masks = <Map<String, dynamic>>[];
+        final headerMask = kcpHeaderMasks[headerType.toLowerCase()];
+        if (headerMask != null) masks.add({'type': headerMask});
+        masks.add(
+          seed.isNotEmpty
+              ? {
+                  'type': 'mkcp-aes128gcm',
+                  'settings': {'password': seed},
+                }
+              : {'type': 'mkcp-original'},
+        );
+        stream['finalmask'] = <String, dynamic>{'udp': masks};
         break;
       case 'ws':
-        final ws = <String, dynamic>{'path': path.isEmpty ? '/' : path};
-        if (host.isNotEmpty) {
-          ws['headers'] = <String, dynamic>{'Host': host};
-        }
+        // Xray 25/26: the Host goes in the dedicated top-level "host" field.
+        // "headers": {"Host": ...} is deprecated and can make the core reject the config.
+        final ws = <String, dynamic>{
+          'path': path.isEmpty ? '/' : path,
+          if (host.isNotEmpty) 'host': host,
+        };
         stream['wsSettings'] = ws;
         break;
       case 'httpupgrade':
@@ -1918,6 +1937,82 @@ class _ServerListScreenState extends State<ServerListScreen>
   }
 
 
+
+  // Move "headers": {"Host": ...} into the dedicated "host" field for ws/httpupgrade/xhttp.
+  String _normalizeStreamHosts(String configJson) {
+    try {
+      final decoded = json.decode(configJson);
+      if (decoded is! Map) return configJson;
+      final outs = decoded['outbounds'];
+      if (outs is! List) return configJson;
+      var changed = false;
+      for (final out in outs) {
+        if (out is! Map) continue;
+        final stream = out['streamSettings'];
+        if (stream is! Map) continue;
+        for (final key in const [
+          'wsSettings',
+          'httpupgradeSettings',
+          'xhttpSettings',
+        ]) {
+          final settings = stream[key];
+          if (settings is! Map) continue;
+          final headers = settings['headers'];
+          if (headers is! Map) continue;
+          final hostKeys = headers.keys
+              .where((k) => k.toString().toLowerCase() == 'host')
+              .toList();
+          for (final k in hostKeys) {
+            final value = headers[k]?.toString() ?? '';
+            if ((settings['host']?.toString() ?? '').isEmpty &&
+                value.isNotEmpty) {
+              settings['host'] = value;
+            }
+            headers.remove(k);
+            changed = true;
+          }
+          if (headers.isEmpty) {
+            settings.remove('headers');
+            changed = true;
+          }
+        }
+      }
+      return changed ? json.encode(decoded) : configJson;
+    } catch (_) {
+      return configJson;
+    }
+  }
+
+  // Legacy form for older cores: "host" -> "headers": {"Host": ...} (ws only).
+  String? _hostIntoHeaders(String configJson) {
+    try {
+      final decoded = json.decode(configJson);
+      if (decoded is! Map) return null;
+      final outs = decoded['outbounds'];
+      if (outs is! List) return null;
+      var changed = false;
+      for (final out in outs) {
+        if (out is! Map) continue;
+        final stream = out['streamSettings'];
+        if (stream is! Map) continue;
+        final ws = stream['wsSettings'];
+        if (ws is! Map) continue;
+        final host = ws['host']?.toString() ?? '';
+        if (host.isEmpty) continue;
+        final headers = ws['headers'] is Map
+            ? Map<String, dynamic>.from(ws['headers'] as Map)
+            : <String, dynamic>{};
+        headers['Host'] = host;
+        ws['headers'] = headers;
+        ws.remove('host');
+        changed = true;
+      }
+      return changed ? json.encode(decoded) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // Minimal variant: only the proxy outbound + direct, one socks inbound, no dns/routing.
   // Used when the core rejects or cannot run the richer config.
   String? _minimalVariant(String configJson) {
@@ -2012,6 +2107,10 @@ class _ServerListScreenState extends State<ServerListScreen>
 
       const ua = 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
           '(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36';
+      final seedMicros = DateTime.now().microsecondsSinceEpoch;
+      final wsKey = base64.encode(
+        List<int>.generate(16, (i) => (seedMicros * (i + 7) + i * 31) % 256),
+      );
 
       await probe(
         'HTTP GET / (Host: $hostHeader)',
@@ -2024,7 +2123,7 @@ class _ServerListScreenState extends State<ServerListScreen>
           'WS upgrade (Host: $hostHeader, path: $path)',
           'GET $path HTTP/1.1\r\nHost: $hostHeader\r\nUser-Agent: $ua\r\n'
               'Upgrade: websocket\r\nConnection: Upgrade\r\n'
-              'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n'
+              'Sec-WebSocket-Key: $wsKey\r\n'
               'Sec-WebSocket-Version: 13\r\n\r\n',
         );
       }
@@ -2116,7 +2215,14 @@ class _ServerListScreenState extends State<ServerListScreen>
     if (noSec != null) result.add(noSec);
     final minimal = _minimalVariant(primary);
     if (minimal != null) result.add(minimal);
-    return result;
+
+    // Modern Xray (25/26) wants the ws/xhttp Host in the top-level "host" field.
+    final normalized = result.map(_normalizeStreamHosts).toList();
+
+    // Last resort for older cores: Host inside headers.
+    final legacy = _hostIntoHeaders(normalized.first);
+    if (legacy != null) normalized.add(legacy);
+    return normalized;
   }
 
   Future<void> _testAllPings() async {
