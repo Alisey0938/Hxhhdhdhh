@@ -1309,7 +1309,9 @@ class _ServerListScreenState extends State<ServerListScreen>
         final special = lowerForm.startsWith('vmess://')
             ? _buildVmessFromBase64(configUrl)
             : _buildShadowsocksLegacy(configUrl);
-        if (special != null) return json.encode(_baseConfig(special));
+        if (special != null) {
+          return json.encode(_wrapOutbound(special, configUrl));
+        }
       } catch (e) {
         debugPrint('Base64 link builder failed: $e');
       }
@@ -1331,7 +1333,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     try {
       final outbound = _buildOutboundFromUri(uri, query);
       if (outbound != null) {
-        return json.encode(_baseConfig(outbound));
+        return json.encode(_wrapOutbound(outbound, configUrl));
       }
     } catch (e) {
       debugPrint('Universal builder failed, using library parser: $e');
@@ -1853,6 +1855,107 @@ class _ServerListScreenState extends State<ServerListScreen>
     };
   }
 
+
+  // ---- Envelope: reuse the exact config skeleton that the library itself produces
+  // (inbounds, routing, dns, direct/blackhole outbounds) and only swap in our outbound.
+  // This keeps the structure identical to library-generated configs that the core accepts.
+  Map<String, dynamic> _libraryEnvelope(String? referenceUrl) {
+    final sources = <String>[
+      if (referenceUrl != null && referenceUrl.contains('://')) referenceUrl,
+      'vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443'
+          '?type=tcp&security=none#envelope',
+    ];
+    for (final source in sources) {
+      try {
+        final decoded =
+            json.decode(V2ray.parseFromURL(source).getFullConfiguration());
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    throw const FormatException('No library envelope available');
+  }
+
+  Map<String, dynamic> _wrapOutbound(
+    Map<String, dynamic> outbound,
+    String? referenceUrl,
+  ) {
+    try {
+      final envelope = _libraryEnvelope(referenceUrl);
+      final outs = envelope['outbounds'];
+      final inbounds = envelope['inbounds'];
+      if (outs is List && outs.isNotEmpty && inbounds is List && inbounds.isNotEmpty) {
+        outbound['tag'] = 'proxy';
+        final rest = outs
+            .skip(1)
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .where((item) => item['tag'] != 'proxy')
+            .toList();
+        envelope['outbounds'] = [outbound, ...rest];
+        envelope.remove('mux');
+        envelope['dns'] ??= <String, dynamic>{
+          'servers': ['1.1.1.1', '8.8.8.8', 'localhost'],
+        };
+        return _applyApiDirectRouting(envelope);
+      }
+    } catch (e) {
+      debugPrint('Envelope build failed, using base config: $e');
+    }
+    return _baseConfig(outbound);
+  }
+
+  // Variant without an explicit "security": "none" key in streamSettings.
+  String? _withoutNoneSecurity(String configJson) {
+    try {
+      final decoded = json.decode(configJson);
+      if (decoded is! Map) return null;
+      final outs = decoded['outbounds'];
+      if (outs is! List || outs.isEmpty || outs.first is! Map) return null;
+      final first = outs.first as Map;
+      final stream = first['streamSettings'];
+      if (stream is Map && stream['security'] == 'none') {
+        stream.remove('security');
+        return json.encode(decoded);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<String> _collectCoreLogs() async {
+    try {
+      final logs = await flutterV2ray.getLogs();
+      final tail = logs.skip(logs.length > 60 ? logs.length - 60 : 0).toList();
+      for (final line in tail) {
+        debugPrint('[XRAY_CORE] $line');
+      }
+      return tail.join('\n');
+    } catch (e) {
+      return 'unable to read core logs: $e';
+    }
+  }
+
+  void _showCoreLogDialog(String logs) {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('هسته اتصال را تأیید نکرد'),
+        content: SingleChildScrollView(
+          child: SelectableText(
+            logs.trim().isEmpty ? 'لاگی از هسته دریافت نشد.' : logs,
+            style: const TextStyle(fontSize: 11),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('بستن'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // For every link we build two candidate configs: our own universal builder and the
   // library's parser. Whichever answers the delay test is remembered and used to connect.
   final Map<String, int> _configVariant = {};
@@ -1896,6 +1999,8 @@ class _ServerListScreenState extends State<ServerListScreen>
     } catch (e) {
       debugPrint('Fallback config build failed: $e');
     }
+    final noSec = _withoutNoneSecurity(primary);
+    if (noSec != null) result.add(noSec);
     return result;
   }
 
@@ -1959,7 +2064,7 @@ class _ServerListScreenState extends State<ServerListScreen>
         try {
           final d = await flutterV2ray
               .getServerDelay(config: candidates[i])
-              .timeout(const Duration(seconds: 15));
+              .timeout(const Duration(seconds: 10));
           if (d > 0) {
             delay = d;
             _configVariant[configId] = i;
@@ -2051,8 +2156,6 @@ class _ServerListScreenState extends State<ServerListScreen>
       final candidates = _parseConfigCandidates(rawUrl);
       var variant = _configVariant[_selectedConfigId ?? ''] ?? 0;
       if (variant < 0 || variant >= candidates.length) variant = 0;
-      final configJson = candidates[variant];
-
       var remark = (selectedConfig['name'] ?? 'Xray Server').toString();
 
       try {
@@ -2076,56 +2179,57 @@ class _ServerListScreenState extends State<ServerListScreen>
         'network=$debugNetwork',
       );
 
-      await flutterV2ray.startV2Ray(
-        remark: remark,
-        config: configJson,
-        proxyOnly: false,
-      );
+      // Try the variant that passed the ping test first, then the others.
+      final order = <int>[
+        variant,
+        for (var i = 0; i < candidates.length; i++)
+          if (i != variant) i,
+      ];
 
-      await Future<void>.delayed(const Duration(seconds: 4));
-      if (!mounted || _userWantsDisconnect) return;
+      var connectedOk = false;
+      var lastLogs = '';
 
-      // If the core did not connect, retry once with the alternate config variant.
-      if (!_isConnected && candidates.length > 1) {
-        final nextVariant = (variant + 1) % candidates.length;
-        debugPrint('V2Ray: retrying with config variant $nextVariant');
-        try {
-          await flutterV2ray.stopV2Ray();
-        } catch (_) {}
+      for (var n = 0; n < order.length; n++) {
+        final idx = order[n];
+
+        if (n > 0) {
+          debugPrint('V2Ray: retrying with config variant $idx');
+          try {
+            await flutterV2ray.stopV2Ray();
+          } catch (_) {}
+          await Future<void>.delayed(const Duration(milliseconds: 800));
+          if (!mounted || _userWantsDisconnect) return;
+          setState(() => _isConnectingProcess = true);
+        }
+
         await flutterV2ray.startV2Ray(
           remark: remark,
-          config: candidates[nextVariant],
+          config: candidates[idx],
           proxyOnly: false,
         );
-        await Future<void>.delayed(const Duration(seconds: 4));
-        if (!mounted || _userWantsDisconnect) return;
-        if (_isConnected) {
-          _configVariant[_selectedConfigId ?? ''] = nextVariant;
+
+        for (var t = 0; t < 36; t++) {
+          await Future<void>.delayed(const Duration(milliseconds: 250));
+          if (!mounted || _userWantsDisconnect) return;
+          if (_isConnected) {
+            connectedOk = true;
+            break;
+          }
         }
+
+        if (connectedOk) {
+          _configVariant[_selectedConfigId ?? ''] = idx;
+          break;
+        }
+
+        lastLogs = await _collectCoreLogs();
       }
 
-      if (!_isConnected) {
-        setState(() => _isConnectingProcess = false);
-        debugPrint('V2Ray: no CONNECTED status after 4 seconds; collecting core logs.');
-        try {
-          final logs = await flutterV2ray.getLogs();
-          for (final line in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
-            debugPrint('[XRAY_CORE] $line');
-          }
-        } catch (logError) {
-          debugPrint('V2Ray: unable to read core logs: $logError');
-        }
+      if (!mounted) return;
+      setState(() => _isConnectingProcess = false);
 
-        if (mounted && !_isConnected) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('هسته اتصال را تأیید نکرد. لاگ‌های [XRAY_CORE] را از Debug Console بررسی کنید.'),
-              duration: Duration(seconds: 6),
-            ),
-          );
-        }
-      } else {
-        setState(() => _isConnectingProcess = false);
+      if (!connectedOk && !_isConnected) {
+        _showCoreLogDialog(lastLogs);
       }
     } catch (e, stackTrace) {
       debugPrint('V2Ray start failed: $e');
