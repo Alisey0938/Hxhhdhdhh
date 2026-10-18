@@ -1314,7 +1314,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     final network = _firstQueryValue(query, ['type', 'network']).toLowerCase();
     final security = _firstQueryValue(query, ['security']).toLowerCase();
 
-    // پشتیبانی کامل و اصلاح‌شده برای کانفیگ‌های WebSocket (مانند نمونه‌های ارسال شده)
+    // اصلاح ساختار WebSocket (حذف فیلد نامعتبر host از داخل wsSettings و تنظیم استاندارد headers)
     if (network == 'ws' &&
         (scheme == 'vless' || scheme == 'vmess' || scheme == 'trojan')) {
       final serverHost = uri.host;
@@ -1341,7 +1341,6 @@ class _ServerListScreenState extends State<ServerListScreen>
           'security': wsSecurity,
           'wsSettings': <String, dynamic>{
             'path': path,
-            'host': transportHost,
             'headers': <String, dynamic>{'Host': transportHost},
           },
         },
