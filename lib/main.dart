@@ -121,6 +121,7 @@ class _LoginScreenState extends State<LoginScreen> {
             : [];
       });
     } catch (_) {
+      // Login must remain available even if announcements cannot be loaded.
     } finally {
       if (mounted) setState(() => _isLoadingLoginAnnouncements = false);
     }
@@ -969,6 +970,116 @@ class _ServerListScreenState extends State<ServerListScreen>
         .toList();
   }
 
+  void _patchVlessAdvancedSettings(
+    Map<String, dynamic> config,
+    Map<String, String> rawQuery,
+  ) {
+    final outbounds = config['outbounds'];
+    if (outbounds is! List) return;
+
+    for (final item in outbounds) {
+      if (item is! Map) continue;
+
+      if (item['protocol']?.toString().toLowerCase() != 'vless') {
+        continue;
+      }
+
+      final streamValue = item['streamSettings'];
+      if (streamValue is! Map) continue;
+
+      final stream = Map<String, dynamic>.from(streamValue);
+      item['streamSettings'] = stream;
+
+      final rawNetwork = _firstQueryValue(rawQuery, ['type', 'network']);
+      if (rawNetwork.isNotEmpty) {
+        stream['network'] =
+            rawNetwork.toLowerCase() == 'splithttp' ? 'xhttp' : rawNetwork;
+      }
+
+      final security = _firstQueryValue(
+        rawQuery,
+        ['security'],
+      ).toLowerCase();
+
+      if (security == 'tls') {
+        final oldTls = stream['tlsSettings'];
+        final tls = oldTls is Map
+            ? Map<String, dynamic>.from(oldTls)
+            : <String, dynamic>{};
+
+        final sni = _firstQueryValue(rawQuery, ['sni', 'serverName']);
+        final fingerprint =
+            _firstQueryValue(rawQuery, ['fp', 'fingerprint']);
+        final alpn = _firstQueryValue(rawQuery, ['alpn']);
+
+        if (sni.isNotEmpty) tls['serverName'] = sni;
+        if (fingerprint.isNotEmpty) tls['fingerprint'] = fingerprint;
+
+        if (alpn.isNotEmpty) {
+          tls['alpn'] = _splitCsv(alpn);
+        }
+
+        final ech = _firstQueryValue(
+          rawQuery,
+          ['echConfigList', 'ech'],
+        );
+        if (ech.isNotEmpty) tls['echConfigList'] = ech;
+
+        final vcn = _firstQueryValue(
+          rawQuery,
+          ['vcn', 'verifyPeerCertByName'],
+        );
+        if (vcn.isNotEmpty) {
+          tls['verifyPeerCertByName'] = vcn;
+        }
+
+        final pcs = _firstQueryValue(
+          rawQuery,
+          ['pcs', 'pinnedPeerCertSha256'],
+        );
+
+        if (pcs.isNotEmpty) tls['pinnedPeerCertSha256'] = pcs;
+
+        tls.remove('allowInsecure');
+
+        stream['security'] = 'tls';
+        stream['tlsSettings'] = tls;
+        stream.remove('realitySettings');
+      } else if (security == 'reality') {
+        final oldReality = stream['realitySettings'];
+        final reality = oldReality is Map
+            ? Map<String, dynamic>.from(oldReality)
+            : <String, dynamic>{};
+
+        final sni = _firstQueryValue(rawQuery, ['sni', 'serverName']);
+        final fingerprint =
+            _firstQueryValue(rawQuery, ['fp', 'fingerprint']);
+        final publicKey =
+            _firstQueryValue(rawQuery, ['pbk', 'publicKey']);
+        final shortId = _firstQueryValue(rawQuery, ['sid', 'shortId']);
+        final spiderX = _firstQueryValue(rawQuery, ['spx', 'spiderX']);
+        final mldsa = _firstQueryValue(
+          rawQuery,
+          ['pqv', 'mldsa65Verify'],
+        );
+
+        reality['show'] = false;
+
+        if (sni.isNotEmpty) reality['serverName'] = sni;
+        if (fingerprint.isNotEmpty) reality['fingerprint'] = fingerprint;
+        if (publicKey.isNotEmpty) reality['publicKey'] = publicKey;
+        if (shortId.isNotEmpty) reality['shortId'] = shortId;
+        if (spiderX.isNotEmpty) reality['spiderX'] = spiderX;
+        if (mldsa.isNotEmpty) reality['mldsa65Verify'] = mldsa;
+
+        stream['security'] = 'reality';
+        stream['realitySettings'] = reality;
+        stream.remove('tlsSettings');
+      }
+    }
+  }
+
+  // تنظیمات بیس کانفیگ به همراه قوانین Routing جهت دور زدن تونل برای پنل مدیریت (هاست ایران)
   Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
     if (outbound is Map && !outbound.containsKey('tag')) {
       outbound['tag'] = 'proxy';
@@ -976,13 +1087,6 @@ class _ServerListScreenState extends State<ServerListScreen>
 
     return {
       'log': {'loglevel': 'warning'},
-      'dns': {
-        'servers': [
-          '1.1.1.1',
-          '8.8.8.8',
-          'localhost'
-        ]
-      },
       'inbounds': [
         {
           'listen': '127.0.0.1',
@@ -1002,8 +1106,13 @@ class _ServerListScreenState extends State<ServerListScreen>
           'tag': 'direct'
         }
       ],
+      // DNS is required so Xray can resolve server hostnames (e.g. *.socialmedia-ad.com)
+      // on Android; without it the core has no working resolver and ping/connect fail.
+      'dns': {
+        'servers': ['1.1.1.1', '8.8.8.8', 'localhost'],
+      },
       'routing': {
-        'domainStrategy': 'IPOnDemand',
+        'domainStrategy': 'AsIs',
         'rules': [
           {
             'type': 'field',
@@ -1013,27 +1122,17 @@ class _ServerListScreenState extends State<ServerListScreen>
         ]
       },
       'mux': {
-        'enabled': false,
+        'enabled': true,
+        'concurrency': 8,
       },
     };
   }
 
+  // Ensure API calls to the Iranian hosting panel bypass the proxy tunnel.
+  // Xray routing is hostname-based (not URL-path-based), so this applies to
+  // the whole socialmedia-ad.ir host, including /index.php.
   Map<String, dynamic> _applyApiDirectRouting(Map<String, dynamic> source) {
     final config = Map<String, dynamic>.from(source);
-
-    if (!config.containsKey('dns') || config['dns'] == null) {
-      config['dns'] = {
-        'servers': ['1.1.1.1', '8.8.8.8', 'localhost']
-      };
-    }
-
-    if (config.containsKey('mux') && config['mux'] is Map) {
-      final mux = Map<String, dynamic>.from(config['mux'] as Map);
-      mux['enabled'] = false;
-      config['mux'] = mux;
-    } else {
-      config['mux'] = {'enabled': false};
-    }
 
     final rawOutbounds = config['outbounds'];
     final outbounds = rawOutbounds is List
@@ -1075,6 +1174,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
     config['outbounds'] = outbounds;
 
+    // Domain routing for HTTPS needs TLS/HTTP sniffing on the inbound.
     final rawInbounds = config['inbounds'];
     if (rawInbounds is List) {
       config['inbounds'] = rawInbounds.whereType<Map>().map((item) {
@@ -1108,6 +1208,8 @@ class _ServerListScreenState extends State<ServerListScreen>
             .toList()
         : <Map<String, dynamic>>[];
 
+    // Remove only our own exact-host rule before reinserting it first,
+    // ensuring existing catch-all/proxy rules cannot shadow the bypass.
     rules.removeWhere((rule) {
       final domains = rule['domain'];
       return rule['type'] == 'field' &&
@@ -1120,7 +1222,7 @@ class _ServerListScreenState extends State<ServerListScreen>
       'outboundTag': directTag,
     });
 
-    routing['domainStrategy'] ??= 'IPOnDemand';
+    routing['domainStrategy'] ??= 'AsIs';
     routing['rules'] = rules;
     config['routing'] = routing;
     return config;
@@ -1180,7 +1282,20 @@ class _ServerListScreenState extends State<ServerListScreen>
       }
     }
 
+    try {
+      final decodedJson = json.decode(configUrl);
+      if (decodedJson is Map) {
+        return json.encode(
+          _applyApiDirectRouting(Map<String, dynamic>.from(decodedJson)),
+        );
+      }
+      if (decodedJson is List) {
+        return json.encode(decodedJson);
+      }
+    } catch (_) {}
+
     final Uri uri;
+
     try {
       uri = Uri.parse(configUrl);
     } catch (_) {
@@ -1192,112 +1307,268 @@ class _ServerListScreenState extends State<ServerListScreen>
     final network = _firstQueryValue(query, ['type', 'network']).toLowerCase();
     final security = _firstQueryValue(query, ['security']).toLowerCase();
 
-    // پارسر کاملاً اختصاصی و هوشمند برای VLESS / VMESS / TROJAN در بستر WebSocket و TCP
-    if (scheme == 'vless' || scheme == 'vmess' || scheme == 'trojan') {
+    if (network == 'ws' &&
+        (scheme == 'vless' || scheme == 'vmess' || scheme == 'trojan')) {
       final serverHost = uri.host;
-      final port = uri.hasPort ? uri.port : (security == 'tls' || security == 'reality' ? 443 : 80);
+      final port = uri.hasPort ? uri.port : 443;
       final userInfo = Uri.decodeComponent(uri.userInfo);
 
-      if (serverHost.isNotEmpty && userInfo.isNotEmpty) {
-        final transportHostValue = _firstQueryValue(query, ['host', 'authority']);
-        final transportHost = transportHostValue.isNotEmpty
-            ? transportHostValue
-            : serverHost;
-        final pathValue = _firstQueryValue(query, ['path']);
-        final path = pathValue.isNotEmpty ? pathValue : '/';
+      if (serverHost.isEmpty || userInfo.isEmpty) {
+        throw const FormatException('WebSocket config has no server or user ID');
+      }
 
-        final outbound = <String, dynamic>{
-          'protocol': scheme,
-          'settings': <String, dynamic>{},
-          'streamSettings': <String, dynamic>{
-            'network': network.isNotEmpty ? network : 'tcp',
+      final transportHostValue = _firstQueryValue(query, ['host', 'authority']);
+      final transportHost = transportHostValue.isNotEmpty
+          ? transportHostValue
+          : serverHost;
+      final pathValue = _firstQueryValue(query, ['path']);
+      final path = pathValue.isNotEmpty ? pathValue : '/';
+      final wsSecurity = security.isEmpty ? 'none' : security;
+
+      final outbound = <String, dynamic>{
+        'protocol': scheme,
+        'settings': <String, dynamic>{},
+        'streamSettings': <String, dynamic>{
+          'network': 'ws',
+          'security': wsSecurity,
+          'wsSettings': <String, dynamic>{
+            'path': path,
+            'headers': <String, dynamic>{'Host': transportHost},
           },
+        },
+      };
+
+      final settings = outbound['settings'] as Map<String, dynamic>;
+      if (scheme == 'trojan') {
+        settings['servers'] = [
+          {'address': serverHost, 'port': port, 'password': userInfo},
+        ];
+      } else if (scheme == 'vmess') {
+        settings['vnext'] = [
+          {
+            'address': serverHost,
+            'port': port,
+            'users': [
+              {
+                'id': userInfo,
+                'level': 8,
+                'alterId': int.tryParse(query['aid'] ?? '0') ?? 0,
+                'security': _firstQueryValue(query, ['scy', 'securityMethod']).isNotEmpty
+                    ? _firstQueryValue(query, ['scy', 'securityMethod'])
+                    : 'auto',
+              },
+            ],
+          },
+        ];
+      } else {
+        settings['vnext'] = [
+          {
+            'address': serverHost,
+            'port': port,
+            'users': [
+              {
+                'id': userInfo,
+                'level': 8,
+                'encryption': _firstQueryValue(query, ['encryption']).isNotEmpty
+                    ? _firstQueryValue(query, ['encryption'])
+                    : 'none',
+                if (_firstQueryValue(query, ['flow']).isNotEmpty)
+                  'flow': _firstQueryValue(query, ['flow']),
+              },
+            ],
+          },
+        ];
+      }
+
+      final stream = outbound['streamSettings'] as Map<String, dynamic>;
+      if (wsSecurity == 'tls') {
+        final tls = <String, dynamic>{};
+        final sni = _firstQueryValue(query, ['sni', 'serverName']);
+        final fingerprint = _firstQueryValue(query, ['fp', 'fingerprint']);
+        final alpn = _firstQueryValue(query, ['alpn']);
+        final ech = _firstQueryValue(query, ['echConfigList', 'ech']);
+        final vcn = _firstQueryValue(query, ['vcn', 'verifyPeerCertByName']);
+        final pcs = _firstQueryValue(query, ['pcs', 'pinnedPeerCertSha256']);
+
+        tls['serverName'] = sni.isNotEmpty ? sni : transportHost;
+        if (fingerprint.isNotEmpty) tls['fingerprint'] = fingerprint;
+        if (alpn.isNotEmpty) tls['alpn'] = _splitCsv(alpn);
+        if (ech.isNotEmpty) tls['echConfigList'] = ech;
+        if (vcn.isNotEmpty) tls['verifyPeerCertByName'] = vcn;
+        if (pcs.isNotEmpty) tls['pinnedPeerCertSha256'] = pcs;
+        stream['tlsSettings'] = tls;
+      } else if (wsSecurity == 'reality') {
+        final sni = _firstQueryValue(query, ['sni', 'serverName']);
+        final fingerprint = _firstQueryValue(query, ['fp', 'fingerprint']);
+        final reality = <String, dynamic>{
+          'show': false,
+          'serverName': sni.isNotEmpty ? sni : transportHost,
+          'fingerprint': fingerprint.isNotEmpty ? fingerprint : 'chrome',
+        };
+        final publicKey = _firstQueryValue(query, ['pbk', 'publicKey']);
+        final shortId = _firstQueryValue(query, ['sid', 'shortId']);
+        final spiderX = _firstQueryValue(query, ['spx', 'spiderX']);
+        final mldsa = _firstQueryValue(query, ['pqv', 'mldsa65Verify']);
+        if (publicKey.isNotEmpty) reality['publicKey'] = publicKey;
+        if (shortId.isNotEmpty) reality['shortId'] = shortId;
+        if (spiderX.isNotEmpty) reality['spiderX'] = spiderX;
+        if (mldsa.isNotEmpty) reality['mldsa65Verify'] = mldsa;
+        stream['realitySettings'] = reality;
+      }
+
+      return json.encode(_baseConfig(outbound));
+    }
+
+    if (network == 'xhttp' || network == 'splithttp') {
+      final protocol = scheme == 'vmess'
+          ? 'vmess'
+          : scheme == 'trojan'
+              ? 'trojan'
+              : 'vless';
+
+      final host = uri.host;
+      final port = uri.hasPort ? uri.port : 443;
+      final userInfo = Uri.decodeComponent(uri.userInfo);
+
+      if (host.isEmpty || userInfo.isEmpty) {
+        throw const FormatException('XHTTP config has no server or ID');
+      }
+
+      final transportHost =
+          _firstQueryValue(query, ['host', 'authority']).isNotEmpty
+              ? _firstQueryValue(query, ['host', 'authority'])
+              : host;
+
+      final pathValue = _firstQueryValue(query, ['path']);
+      final path = pathValue.isNotEmpty ? pathValue : '/';
+
+      final modeValue = _firstQueryValue(query, ['mode']);
+      final mode = modeValue.isNotEmpty ? modeValue : 'auto';
+
+      final outbound = <String, dynamic>{
+        'protocol': protocol,
+        'settings': <String, dynamic>{},
+        'streamSettings': <String, dynamic>{
+          'network': 'xhttp',
+          'security': security.isEmpty ? 'none' : security,
+          'xhttpSettings': <String, dynamic>{
+            'path': path,
+            'host': transportHost,
+            'mode': mode,
+          },
+        },
+      };
+
+      final settings = outbound['settings'] as Map<String, dynamic>;
+
+      if (protocol == 'trojan') {
+        settings['servers'] = [
+          {
+            'address': host,
+            'port': port,
+            'password': userInfo,
+          }
+        ];
+      } else if (protocol == 'vmess') {
+        settings['vnext'] = [
+          {
+            'address': host,
+            'port': port,
+            'users': [
+              {
+                'id': userInfo,
+                'alterId': int.tryParse(query['aid'] ?? '0') ?? 0,
+                'security': query['scy'] ?? 'auto',
+              }
+            ],
+          }
+        ];
+      } else {
+        settings['vnext'] = [
+          {
+            'address': host,
+            'port': port,
+            'users': [
+              {
+                'id': userInfo,
+                'encryption': query['encryption'] ?? 'none',
+                if ((query['flow'] ?? '').isNotEmpty) 'flow': query['flow'],
+              }
+            ],
+          }
+        ];
+      }
+
+      final stream =
+          outbound['streamSettings'] as Map<String, dynamic>;
+      final xhttp =
+          stream['xhttpSettings'] as Map<String, dynamic>;
+
+      final extra = query['extra'];
+      if (extra != null && extra.trim().isNotEmpty) {
+        try {
+          xhttp['extra'] = json.decode(extra);
+        } catch (_) {}
+      }
+
+      if (security == 'tls') {
+        final tls = <String, dynamic>{};
+
+        final sni = _firstQueryValue(query, ['sni', 'serverName']);
+        final fingerprint =
+            _firstQueryValue(query, ['fp', 'fingerprint']);
+        final alpn = _firstQueryValue(query, ['alpn']);
+        final ech = _firstQueryValue(query, ['echConfigList', 'ech']);
+        final vcn = _firstQueryValue(
+          query,
+          ['vcn', 'verifyPeerCertByName'],
+        );
+        final pcs = _firstQueryValue(
+          query,
+          ['pcs', 'pinnedPeerCertSha256'],
+        );
+
+        tls['serverName'] = sni.isNotEmpty ? sni : transportHost;
+
+        if (fingerprint.isNotEmpty) {
+          tls['fingerprint'] = fingerprint;
+        }
+
+        if (alpn.isNotEmpty) tls['alpn'] = _splitCsv(alpn);
+        if (ech.isNotEmpty) tls['echConfigList'] = ech;
+        if (vcn.isNotEmpty) tls['verifyPeerCertByName'] = vcn;
+        if (pcs.isNotEmpty) tls['pinnedPeerCertSha256'] = pcs;
+
+        stream['tlsSettings'] = tls;
+      } else if (security == 'reality') {
+        final reality = <String, dynamic>{
+          'show': false,
+          'serverName': _firstQueryValue(query, ['sni', 'serverName'])
+                  .isNotEmpty
+              ? _firstQueryValue(query, ['sni', 'serverName'])
+              : transportHost,
+          'fingerprint':
+              _firstQueryValue(query, ['fp', 'fingerprint']).isNotEmpty
+                  ? _firstQueryValue(query, ['fp', 'fingerprint'])
+                  : 'chrome',
         };
 
-        final settings = outbound['settings'] as Map<String, dynamic>;
-        if (scheme == 'trojan') {
-          settings['servers'] = [
-            {'address': serverHost, 'port': port, 'password': userInfo},
-          ];
-        } else if (scheme == 'vmess') {
-          settings['vnext'] = [
-            {
-              'address': serverHost,
-              'port': port,
-              'users': [
-                {
-                  'id': userInfo,
-                  'alterId': int.tryParse(query['aid'] ?? '0') ?? 0,
-                  'security': _firstQueryValue(query, ['scy', 'securityMethod']).isNotEmpty
-                      ? _firstQueryValue(query, ['scy', 'securityMethod'])
-                      : 'auto',
-                },
-              ],
-            },
-          ];
-        } else { // VLESS
-          final enc = _firstQueryValue(query, ['encryption']);
-          settings['vnext'] = [
-            {
-              'address': serverHost,
-              'port': port,
-              'users': [
-                {
-                  'id': userInfo,
-                  'encryption': enc.isNotEmpty ? enc : 'none',
-                  if (_firstQueryValue(query, ['flow']).isNotEmpty)
-                    'flow': _firstQueryValue(query, ['flow']),
-                },
-              ],
-            },
-          ];
-        }
+        final publicKey =
+            _firstQueryValue(query, ['pbk', 'publicKey']);
+        final shortId = _firstQueryValue(query, ['sid', 'shortId']);
+        final spiderX = _firstQueryValue(query, ['spx', 'spiderX']);
+        final mldsa =
+            _firstQueryValue(query, ['pqv', 'mldsa65Verify']);
 
-        final stream = outbound['streamSettings'] as Map<String, dynamic>;
+        if (publicKey.isNotEmpty) reality['publicKey'] = publicKey;
+        if (shortId.isNotEmpty) reality['shortId'] = shortId;
+        if (spiderX.isNotEmpty) reality['spiderX'] = spiderX;
+        if (mldsa.isNotEmpty) reality['mldsa65Verify'] = mldsa;
 
-        if (network == 'ws') {
-          stream['wsSettings'] = <String, dynamic>{
-            'path': path,
-            'headers': <String, dynamic>{
-              'Host': transportHost,
-            },
-          };
-        }
-
-        if (security == 'tls') {
-          stream['security'] = 'tls';
-          final tls = <String, dynamic>{};
-          final sni = _firstQueryValue(query, ['sni', 'serverName']);
-          final fingerprint = _firstQueryValue(query, ['fp', 'fingerprint']);
-          final alpn = _firstQueryValue(query, ['alpn']);
-
-          tls['serverName'] = sni.isNotEmpty ? sni : transportHost;
-          if (fingerprint.isNotEmpty) tls['fingerprint'] = fingerprint;
-          if (alpn.isNotEmpty) tls['alpn'] = _splitCsv(alpn);
-          stream['tlsSettings'] = tls;
-        } else if (security == 'reality') {
-          stream['security'] = 'reality';
-          final sni = _firstQueryValue(query, ['sni', 'serverName']);
-          final fingerprint = _firstQueryValue(query, ['fp', 'fingerprint']);
-          final reality = <String, dynamic>{
-            'show': false,
-            'serverName': sni.isNotEmpty ? sni : transportHost,
-            'fingerprint': fingerprint.isNotEmpty ? fingerprint : 'chrome',
-          };
-          final publicKey = _firstQueryValue(query, ['pbk', 'publicKey']);
-          final shortId = _firstQueryValue(query, ['sid', 'shortId']);
-          final spiderX = _firstQueryValue(query, ['spx', 'spiderX']);
-          if (publicKey.isNotEmpty) reality['publicKey'] = publicKey;
-          if (shortId.isNotEmpty) reality['shortId'] = shortId;
-          if (spiderX.isNotEmpty) reality['spiderX'] = spiderX;
-          stream['realitySettings'] = reality;
-        } else {
-          // برای کانفیگ‌های بدون TLS مانند Husky (security=none)
-          stream['security'] = 'none';
-        }
-
-        return json.encode(_baseConfig(outbound));
+        stream['realitySettings'] = reality;
       }
+
+      return json.encode(_baseConfig(outbound));
     }
 
     final parser = V2ray.parseFromURL(configUrl);
@@ -1305,12 +1576,70 @@ class _ServerListScreenState extends State<ServerListScreen>
 
     try {
       final decoded = json.decode(generated);
+
       if (decoded is Map) {
-        return json.encode(_applyApiDirectRouting(Map<String, dynamic>.from(decoded)));
+        final config = Map<String, dynamic>.from(decoded);
+
+        if (scheme == 'vless') {
+          _patchVlessAdvancedSettings(config, query);
+        }
+
+        return json.encode(_applyApiDirectRouting(config));
       }
     } catch (_) {}
 
     return generated;
+  }
+
+  // For WebSocket links we build two candidate configs: our own builder and the
+  // library's parser. Whichever answers the delay test is remembered and used to connect.
+  final Map<String, int> _configVariant = {};
+
+  String? _parseLibraryFallbackJson(String rawUrl) {
+    final configUrl = _cleanUrl(rawUrl);
+    if (!configUrl.contains('://') ||
+        configUrl.startsWith('{') ||
+        configUrl.startsWith('[')) {
+      return null;
+    }
+
+    final Uri uri;
+    try {
+      uri = Uri.parse(configUrl);
+    } catch (_) {
+      return null;
+    }
+
+    final scheme = uri.scheme.toLowerCase();
+    final query = _rawQueryParametersPreservePlus(uri);
+    final network = _firstQueryValue(query, ['type', 'network']).toLowerCase();
+
+    if (network != 'ws' ||
+        !(scheme == 'vless' || scheme == 'vmess' || scheme == 'trojan')) {
+      return null;
+    }
+
+    final generated = V2ray.parseFromURL(configUrl).getFullConfiguration();
+    final decoded = json.decode(generated);
+    if (decoded is! Map) return null;
+
+    final config = Map<String, dynamic>.from(decoded);
+    if (scheme == 'vless') {
+      _patchVlessAdvancedSettings(config, query);
+    }
+    return json.encode(_applyApiDirectRouting(config));
+  }
+
+  List<String> _parseConfigCandidates(String rawUrl) {
+    final primary = _parseConfigToJson(rawUrl);
+    final result = <String>[primary];
+    try {
+      final alt = _parseLibraryFallbackJson(rawUrl);
+      if (alt != null && alt != primary) result.add(alt);
+    } catch (e) {
+      debugPrint('Fallback config build failed: $e');
+    }
+    return result;
   }
 
   Future<void> _testAllPings() async {
@@ -1368,10 +1697,21 @@ class _ServerListScreenState extends State<ServerListScreen>
     var delay = -1;
 
     try {
-      final configJson = _parseConfigToJson(rawUrl);
-      delay = await flutterV2ray
-          .getServerDelay(config: configJson)
-          .timeout(const Duration(seconds: 20));
+      final candidates = _parseConfigCandidates(rawUrl);
+      for (var i = 0; i < candidates.length; i++) {
+        try {
+          final d = await flutterV2ray
+              .getServerDelay(config: candidates[i])
+              .timeout(const Duration(seconds: 15));
+          if (d > 0) {
+            delay = d;
+            _configVariant[configId] = i;
+            break;
+          }
+        } catch (e) {
+          debugPrint('Ping failed for $configId (variant $i): $e');
+        }
+      }
     } catch (e) {
       debugPrint('Ping failed for $configId: $e');
     }
@@ -1451,7 +1791,10 @@ class _ServerListScreenState extends State<ServerListScreen>
         return;
       }
 
-      final configJson = _parseConfigToJson(rawUrl);
+      final candidates = _parseConfigCandidates(rawUrl);
+      var variant = _configVariant[_selectedConfigId ?? ''] ?? 0;
+      if (variant < 0 || variant >= candidates.length) variant = 0;
+      final configJson = candidates[variant];
 
       var remark = (selectedConfig['name'] ?? 'Xray Server').toString();
 
@@ -1463,6 +1806,18 @@ class _ServerListScreenState extends State<ServerListScreen>
       } catch (_) {}
 
       debugPrint('V2Ray: starting profile="$remark"');
+      final debugUri = Uri.tryParse(_cleanUrl(rawUrl));
+      final debugNetwork = debugUri == null
+          ? ''
+          : _firstQueryValue(
+              _rawQueryParametersPreservePlus(debugUri),
+              const ['type', 'network'],
+            );
+      debugPrint(
+        'V2Ray: parsed scheme=${debugUri?.scheme}, '
+        'host=${debugUri?.host}, port=${debugUri?.port}, '
+        'network=$debugNetwork',
+      );
 
       await flutterV2ray.startV2Ray(
         remark: remark,
@@ -1473,14 +1828,36 @@ class _ServerListScreenState extends State<ServerListScreen>
       await Future<void>.delayed(const Duration(seconds: 4));
       if (!mounted || _userWantsDisconnect) return;
 
+      // If the core did not connect, retry once with the alternate config variant.
+      if (!_isConnected && candidates.length > 1) {
+        final nextVariant = (variant + 1) % candidates.length;
+        debugPrint('V2Ray: retrying with config variant $nextVariant');
+        try {
+          await flutterV2ray.stopV2Ray();
+        } catch (_) {}
+        await flutterV2ray.startV2Ray(
+          remark: remark,
+          config: candidates[nextVariant],
+          proxyOnly: false,
+        );
+        await Future<void>.delayed(const Duration(seconds: 4));
+        if (!mounted || _userWantsDisconnect) return;
+        if (_isConnected) {
+          _configVariant[_selectedConfigId ?? ''] = nextVariant;
+        }
+      }
+
       if (!_isConnected) {
         setState(() => _isConnectingProcess = false);
+        debugPrint('V2Ray: no CONNECTED status after 4 seconds; collecting core logs.');
         try {
           final logs = await flutterV2ray.getLogs();
           for (final line in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
             debugPrint('[XRAY_CORE] $line');
           }
-        } catch (_) {}
+        } catch (logError) {
+          debugPrint('V2Ray: unable to read core logs: $logError');
+        }
 
         if (mounted && !_isConnected) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1495,6 +1872,15 @@ class _ServerListScreenState extends State<ServerListScreen>
       }
     } catch (e, stackTrace) {
       debugPrint('V2Ray start failed: $e');
+      debugPrint('$stackTrace');
+      try {
+        final logs = await flutterV2ray.getLogs();
+        for (final line in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
+          debugPrint('[XRAY_CORE] $line');
+        }
+      } catch (logError) {
+        debugPrint('V2Ray: unable to read core logs: $logError');
+      }
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1561,6 +1947,8 @@ class _ServerListScreenState extends State<ServerListScreen>
                   } catch (_) {}
                 },
           child: Container(
+            // Match the horizontal width and alignment of the config cards
+            // (ListView horizontal padding: 12 and card bottom margin: 10).
             width: double.infinity,
             margin: const EdgeInsets.only(
               left: 12,
