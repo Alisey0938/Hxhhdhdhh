@@ -1111,7 +1111,7 @@ class _ServerListScreenState extends State<ServerListScreen>
         'rules': [
           {
             'type': 'field',
-            'domain': ['socialmedia-ad.ir'],
+            'domain': ['full:socialmedia-ad.ir'],
             'outboundTag': 'direct'
           }
         ]
@@ -1123,6 +1123,106 @@ class _ServerListScreenState extends State<ServerListScreen>
     };
   }
 
+  // Ensure API calls to the Iranian hosting panel bypass the proxy tunnel.
+  // Xray routing is hostname-based (not URL-path-based), so this applies to
+  // the whole socialmedia-ad.ir host, including /index.php.
+  Map<String, dynamic> _applyApiDirectRouting(Map<String, dynamic> source) {
+    final config = Map<String, dynamic>.from(source);
+
+    final rawOutbounds = config['outbounds'];
+    final outbounds = rawOutbounds is List
+        ? rawOutbounds
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList()
+        : <Map<String, dynamic>>[];
+
+    String? directTag;
+    for (final outbound in outbounds) {
+      if (outbound['protocol'] == 'freedom' &&
+          outbound['tag'] == 'direct') {
+        directTag = 'direct';
+        break;
+      }
+    }
+
+    if (directTag == null) {
+      for (final outbound in outbounds) {
+        if (outbound['protocol'] == 'freedom' &&
+            outbound['tag'] == 'api-direct') {
+          directTag = 'api-direct';
+          break;
+        }
+      }
+    }
+
+    if (directTag == null) {
+      directTag = 'api-direct';
+      var candidate = directTag;
+      var suffix = 2;
+      while (outbounds.any((item) => item['tag'] == candidate)) {
+        candidate = 'api-direct-$suffix';
+        suffix++;
+      }
+      directTag = candidate;
+      outbounds.add({'protocol': 'freedom', 'tag': directTag});
+    }
+    config['outbounds'] = outbounds;
+
+    // Domain routing for HTTPS needs TLS/HTTP sniffing on the inbound.
+    final rawInbounds = config['inbounds'];
+    if (rawInbounds is List) {
+      config['inbounds'] = rawInbounds.whereType<Map>().map((item) {
+        final inbound = Map<String, dynamic>.from(item);
+        final rawSniffing = inbound['sniffing'];
+        final sniffing = rawSniffing is Map
+            ? Map<String, dynamic>.from(rawSniffing)
+            : <String, dynamic>{};
+        sniffing['enabled'] = true;
+        final rawOverrides = sniffing['destOverride'];
+        final overrides = rawOverrides is List
+            ? rawOverrides.map((value) => value.toString()).toList()
+            : <String>[];
+        for (final protocol in const ['http', 'tls', 'quic']) {
+          if (!overrides.contains(protocol)) overrides.add(protocol);
+        }
+        sniffing['destOverride'] = overrides;
+        inbound['sniffing'] = sniffing;
+        return inbound;
+      }).toList();
+    }
+
+    final rawRouting = config['routing'];
+    final routing = rawRouting is Map
+        ? Map<String, dynamic>.from(rawRouting)
+        : <String, dynamic>{};
+    final rawRules = routing['rules'];
+    final rules = rawRules is List
+        ? rawRules.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList()
+        : <Map<String, dynamic>>[];
+
+    // Remove only our own exact-host rule before reinserting it first,
+    // ensuring existing catch-all/proxy rules cannot shadow the bypass.
+    rules.removeWhere((rule) {
+      final domains = rule['domain'];
+      return rule['type'] == 'field' &&
+          domains is List &&
+          domains.contains('full:socialmedia-ad.ir');
+    });
+    rules.insert(0, {
+      'type': 'field',
+      'domain': ['full:socialmedia-ad.ir'],
+      'outboundTag': directTag,
+    });
+
+    routing['domainStrategy'] ??= 'AsIs';
+    routing['rules'] = rules;
+    config['routing'] = routing;
+    return config;
+  }
+
   String _parseConfigToJson(String rawUrl) {
     var configUrl = _cleanUrl(rawUrl);
 
@@ -1132,7 +1232,12 @@ class _ServerListScreenState extends State<ServerListScreen>
 
     try {
       final decodedJson = json.decode(configUrl);
-      if (decodedJson is Map || decodedJson is List) {
+      if (decodedJson is Map) {
+        return json.encode(
+          _applyApiDirectRouting(Map<String, dynamic>.from(decodedJson)),
+        );
+      }
+      if (decodedJson is List) {
         return json.encode(decodedJson);
       }
     } catch (_) {}
@@ -1174,7 +1279,12 @@ class _ServerListScreenState extends State<ServerListScreen>
 
     try {
       final decodedJson = json.decode(configUrl);
-      if (decodedJson is Map || decodedJson is List) {
+      if (decodedJson is Map) {
+        return json.encode(
+          _applyApiDirectRouting(Map<String, dynamic>.from(decodedJson)),
+        );
+      }
+      if (decodedJson is List) {
         return json.encode(decodedJson);
       }
     } catch (_) {}
@@ -1468,7 +1578,7 @@ class _ServerListScreenState extends State<ServerListScreen>
           _patchVlessAdvancedSettings(config, query);
         }
 
-        return json.encode(config);
+        return json.encode(_applyApiDirectRouting(config));
       }
     } catch (_) {}
 
