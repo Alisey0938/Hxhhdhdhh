@@ -121,7 +121,6 @@ class _LoginScreenState extends State<LoginScreen> {
             : [];
       });
     } catch (_) {
-      // Login must remain available even if announcements cannot be loaded.
     } finally {
       if (mounted) setState(() => _isLoadingLoginAnnouncements = false);
     }
@@ -1079,7 +1078,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
   }
 
-  // تنظیمات بیس کانفیگ به همراه قوانین Routing جهت دور زدن تونل برای پنل مدیریت (هاست ایران)
   Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
     if (outbound is Map && !outbound.containsKey('tag')) {
       outbound['tag'] = 'proxy';
@@ -1087,6 +1085,13 @@ class _ServerListScreenState extends State<ServerListScreen>
 
     return {
       'log': {'loglevel': 'warning'},
+      'dns': {
+        'servers': [
+          '8.8.8.8',
+          '1.1.1.1',
+          'localhost'
+        ]
+      },
       'inbounds': [
         {
           'listen': '127.0.0.1',
@@ -1107,7 +1112,7 @@ class _ServerListScreenState extends State<ServerListScreen>
         }
       ],
       'routing': {
-        'domainStrategy': 'AsIs',
+        'domainStrategy': 'IPOnDemand',
         'rules': [
           {
             'type': 'field',
@@ -1117,17 +1122,27 @@ class _ServerListScreenState extends State<ServerListScreen>
         ]
       },
       'mux': {
-        'enabled': true,
-        'concurrency': 8,
+        'enabled': false,
       },
     };
   }
 
-  // Ensure API calls to the Iranian hosting panel bypass the proxy tunnel.
-  // Xray routing is hostname-based (not URL-path-based), so this applies to
-  // the whole socialmedia-ad.ir host, including /index.php.
   Map<String, dynamic> _applyApiDirectRouting(Map<String, dynamic> source) {
     final config = Map<String, dynamic>.from(source);
+
+    if (!config.containsKey('dns') || config['dns'] == null) {
+      config['dns'] = {
+        'servers': ['8.8.8.8', '1.1.1.1', 'localhost']
+      };
+    }
+
+    if (config.containsKey('mux') && config['mux'] is Map) {
+      final mux = Map<String, dynamic>.from(config['mux'] as Map);
+      mux['enabled'] = false;
+      config['mux'] = mux;
+    } else {
+      config['mux'] = {'enabled': false};
+    }
 
     final rawOutbounds = config['outbounds'];
     final outbounds = rawOutbounds is List
@@ -1169,7 +1184,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
     config['outbounds'] = outbounds;
 
-    // Domain routing for HTTPS needs TLS/HTTP sniffing on the inbound.
     final rawInbounds = config['inbounds'];
     if (rawInbounds is List) {
       config['inbounds'] = rawInbounds.whereType<Map>().map((item) {
@@ -1203,8 +1217,6 @@ class _ServerListScreenState extends State<ServerListScreen>
             .toList()
         : <Map<String, dynamic>>[];
 
-    // Remove only our own exact-host rule before reinserting it first,
-    // ensuring existing catch-all/proxy rules cannot shadow the bypass.
     rules.removeWhere((rule) {
       final domains = rule['domain'];
       return rule['type'] == 'field' &&
@@ -1217,7 +1229,7 @@ class _ServerListScreenState extends State<ServerListScreen>
       'outboundTag': directTag,
     });
 
-    routing['domainStrategy'] ??= 'AsIs';
+    routing['domainStrategy'] ??= 'IPOnDemand';
     routing['rules'] = rules;
     config['routing'] = routing;
     return config;
@@ -1302,6 +1314,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     final network = _firstQueryValue(query, ['type', 'network']).toLowerCase();
     final security = _firstQueryValue(query, ['security']).toLowerCase();
 
+    // پشتیبانی کامل و اصلاح‌شده برای کانفیگ‌های WebSocket (مانند نمونه‌های ارسال شده)
     if (network == 'ws' &&
         (scheme == 'vless' || scheme == 'vmess' || scheme == 'trojan')) {
       final serverHost = uri.host;
@@ -1857,8 +1870,6 @@ class _ServerListScreenState extends State<ServerListScreen>
                   } catch (_) {}
                 },
           child: Container(
-            // Match the horizontal width and alignment of the config cards
-            // (ListView horizontal padding: 12 and card bottom margin: 10).
             width: double.infinity,
             margin: const EdgeInsets.only(
               left: 12,
