@@ -1294,6 +1294,27 @@ class _ServerListScreenState extends State<ServerListScreen>
       }
     } catch (_) {}
 
+    // Subscription-style text with several lines: use the first real link.
+    if (configUrl.contains('\n')) {
+      final firstLink = configUrl
+          .split(RegExp(r'[\r\n]+'))
+          .map((line) => line.trim())
+          .firstWhere((line) => line.contains('://'), orElse: () => configUrl);
+      configUrl = firstLink;
+    }
+
+    final lowerForm = configUrl.toLowerCase();
+    if (lowerForm.startsWith('vmess://') || lowerForm.startsWith('ss://')) {
+      try {
+        final special = lowerForm.startsWith('vmess://')
+            ? _buildVmessFromBase64(configUrl)
+            : _buildShadowsocksLegacy(configUrl);
+        if (special != null) return json.encode(_baseConfig(special));
+      } catch (e) {
+        debugPrint('Base64 link builder failed: $e');
+      }
+    }
+
     final Uri uri;
 
     try {
@@ -1304,271 +1325,16 @@ class _ServerListScreenState extends State<ServerListScreen>
 
     final scheme = uri.scheme.toLowerCase();
     final query = _rawQueryParametersPreservePlus(uri);
-    final network = _firstQueryValue(query, ['type', 'network']).toLowerCase();
-    final security = _firstQueryValue(query, ['security']).toLowerCase();
 
-    if (network == 'ws' &&
-        (scheme == 'vless' || scheme == 'vmess' || scheme == 'trojan')) {
-      final serverHost = uri.host;
-      final port = uri.hasPort ? uri.port : 443;
-      final userInfo = Uri.decodeComponent(uri.userInfo);
-
-      if (serverHost.isEmpty || userInfo.isEmpty) {
-        throw const FormatException('WebSocket config has no server or user ID');
+    // Universal v2rayNG-style builder: every protocol / transport / security.
+    // If it cannot handle the link, we fall through to the library parser below.
+    try {
+      final outbound = _buildOutboundFromUri(uri, query);
+      if (outbound != null) {
+        return json.encode(_baseConfig(outbound));
       }
-
-      final transportHostValue = _firstQueryValue(query, ['host', 'authority']);
-      final transportHost = transportHostValue.isNotEmpty
-          ? transportHostValue
-          : serverHost;
-      final pathValue = _firstQueryValue(query, ['path']);
-      final path = pathValue.isNotEmpty ? pathValue : '/';
-      final wsSecurity = security.isEmpty ? 'none' : security;
-
-      final outbound = <String, dynamic>{
-        'protocol': scheme,
-        'settings': <String, dynamic>{},
-        'streamSettings': <String, dynamic>{
-          'network': 'ws',
-          'security': wsSecurity,
-          'wsSettings': <String, dynamic>{
-            'path': path,
-            'headers': <String, dynamic>{'Host': transportHost},
-          },
-        },
-      };
-
-      final settings = outbound['settings'] as Map<String, dynamic>;
-      if (scheme == 'trojan') {
-        settings['servers'] = [
-          {'address': serverHost, 'port': port, 'password': userInfo},
-        ];
-      } else if (scheme == 'vmess') {
-        settings['vnext'] = [
-          {
-            'address': serverHost,
-            'port': port,
-            'users': [
-              {
-                'id': userInfo,
-                'level': 8,
-                'alterId': int.tryParse(query['aid'] ?? '0') ?? 0,
-                'security': _firstQueryValue(query, ['scy', 'securityMethod']).isNotEmpty
-                    ? _firstQueryValue(query, ['scy', 'securityMethod'])
-                    : 'auto',
-              },
-            ],
-          },
-        ];
-      } else {
-        settings['vnext'] = [
-          {
-            'address': serverHost,
-            'port': port,
-            'users': [
-              {
-                'id': userInfo,
-                'level': 8,
-                'encryption': _firstQueryValue(query, ['encryption']).isNotEmpty
-                    ? _firstQueryValue(query, ['encryption'])
-                    : 'none',
-                if (_firstQueryValue(query, ['flow']).isNotEmpty)
-                  'flow': _firstQueryValue(query, ['flow']),
-              },
-            ],
-          },
-        ];
-      }
-
-      final stream = outbound['streamSettings'] as Map<String, dynamic>;
-      if (wsSecurity == 'tls') {
-        final tls = <String, dynamic>{};
-        final sni = _firstQueryValue(query, ['sni', 'serverName']);
-        final fingerprint = _firstQueryValue(query, ['fp', 'fingerprint']);
-        final alpn = _firstQueryValue(query, ['alpn']);
-        final ech = _firstQueryValue(query, ['echConfigList', 'ech']);
-        final vcn = _firstQueryValue(query, ['vcn', 'verifyPeerCertByName']);
-        final pcs = _firstQueryValue(query, ['pcs', 'pinnedPeerCertSha256']);
-
-        tls['serverName'] = sni.isNotEmpty ? sni : transportHost;
-        if (fingerprint.isNotEmpty) tls['fingerprint'] = fingerprint;
-        if (alpn.isNotEmpty) tls['alpn'] = _splitCsv(alpn);
-        if (ech.isNotEmpty) tls['echConfigList'] = ech;
-        if (vcn.isNotEmpty) tls['verifyPeerCertByName'] = vcn;
-        if (pcs.isNotEmpty) tls['pinnedPeerCertSha256'] = pcs;
-        stream['tlsSettings'] = tls;
-      } else if (wsSecurity == 'reality') {
-        final sni = _firstQueryValue(query, ['sni', 'serverName']);
-        final fingerprint = _firstQueryValue(query, ['fp', 'fingerprint']);
-        final reality = <String, dynamic>{
-          'show': false,
-          'serverName': sni.isNotEmpty ? sni : transportHost,
-          'fingerprint': fingerprint.isNotEmpty ? fingerprint : 'chrome',
-        };
-        final publicKey = _firstQueryValue(query, ['pbk', 'publicKey']);
-        final shortId = _firstQueryValue(query, ['sid', 'shortId']);
-        final spiderX = _firstQueryValue(query, ['spx', 'spiderX']);
-        final mldsa = _firstQueryValue(query, ['pqv', 'mldsa65Verify']);
-        if (publicKey.isNotEmpty) reality['publicKey'] = publicKey;
-        if (shortId.isNotEmpty) reality['shortId'] = shortId;
-        if (spiderX.isNotEmpty) reality['spiderX'] = spiderX;
-        if (mldsa.isNotEmpty) reality['mldsa65Verify'] = mldsa;
-        stream['realitySettings'] = reality;
-      }
-
-      return json.encode(_baseConfig(outbound));
-    }
-
-    if (network == 'xhttp' || network == 'splithttp') {
-      final protocol = scheme == 'vmess'
-          ? 'vmess'
-          : scheme == 'trojan'
-              ? 'trojan'
-              : 'vless';
-
-      final host = uri.host;
-      final port = uri.hasPort ? uri.port : 443;
-      final userInfo = Uri.decodeComponent(uri.userInfo);
-
-      if (host.isEmpty || userInfo.isEmpty) {
-        throw const FormatException('XHTTP config has no server or ID');
-      }
-
-      final transportHost =
-          _firstQueryValue(query, ['host', 'authority']).isNotEmpty
-              ? _firstQueryValue(query, ['host', 'authority'])
-              : host;
-
-      final pathValue = _firstQueryValue(query, ['path']);
-      final path = pathValue.isNotEmpty ? pathValue : '/';
-
-      final modeValue = _firstQueryValue(query, ['mode']);
-      final mode = modeValue.isNotEmpty ? modeValue : 'auto';
-
-      final outbound = <String, dynamic>{
-        'protocol': protocol,
-        'settings': <String, dynamic>{},
-        'streamSettings': <String, dynamic>{
-          'network': 'xhttp',
-          'security': security.isEmpty ? 'none' : security,
-          'xhttpSettings': <String, dynamic>{
-            'path': path,
-            'host': transportHost,
-            'mode': mode,
-          },
-        },
-      };
-
-      final settings = outbound['settings'] as Map<String, dynamic>;
-
-      if (protocol == 'trojan') {
-        settings['servers'] = [
-          {
-            'address': host,
-            'port': port,
-            'password': userInfo,
-          }
-        ];
-      } else if (protocol == 'vmess') {
-        settings['vnext'] = [
-          {
-            'address': host,
-            'port': port,
-            'users': [
-              {
-                'id': userInfo,
-                'alterId': int.tryParse(query['aid'] ?? '0') ?? 0,
-                'security': query['scy'] ?? 'auto',
-              }
-            ],
-          }
-        ];
-      } else {
-        settings['vnext'] = [
-          {
-            'address': host,
-            'port': port,
-            'users': [
-              {
-                'id': userInfo,
-                'encryption': query['encryption'] ?? 'none',
-                if ((query['flow'] ?? '').isNotEmpty) 'flow': query['flow'],
-              }
-            ],
-          }
-        ];
-      }
-
-      final stream =
-          outbound['streamSettings'] as Map<String, dynamic>;
-      final xhttp =
-          stream['xhttpSettings'] as Map<String, dynamic>;
-
-      final extra = query['extra'];
-      if (extra != null && extra.trim().isNotEmpty) {
-        try {
-          xhttp['extra'] = json.decode(extra);
-        } catch (_) {}
-      }
-
-      if (security == 'tls') {
-        final tls = <String, dynamic>{};
-
-        final sni = _firstQueryValue(query, ['sni', 'serverName']);
-        final fingerprint =
-            _firstQueryValue(query, ['fp', 'fingerprint']);
-        final alpn = _firstQueryValue(query, ['alpn']);
-        final ech = _firstQueryValue(query, ['echConfigList', 'ech']);
-        final vcn = _firstQueryValue(
-          query,
-          ['vcn', 'verifyPeerCertByName'],
-        );
-        final pcs = _firstQueryValue(
-          query,
-          ['pcs', 'pinnedPeerCertSha256'],
-        );
-
-        tls['serverName'] = sni.isNotEmpty ? sni : transportHost;
-
-        if (fingerprint.isNotEmpty) {
-          tls['fingerprint'] = fingerprint;
-        }
-
-        if (alpn.isNotEmpty) tls['alpn'] = _splitCsv(alpn);
-        if (ech.isNotEmpty) tls['echConfigList'] = ech;
-        if (vcn.isNotEmpty) tls['verifyPeerCertByName'] = vcn;
-        if (pcs.isNotEmpty) tls['pinnedPeerCertSha256'] = pcs;
-
-        stream['tlsSettings'] = tls;
-      } else if (security == 'reality') {
-        final reality = <String, dynamic>{
-          'show': false,
-          'serverName': _firstQueryValue(query, ['sni', 'serverName'])
-                  .isNotEmpty
-              ? _firstQueryValue(query, ['sni', 'serverName'])
-              : transportHost,
-          'fingerprint':
-              _firstQueryValue(query, ['fp', 'fingerprint']).isNotEmpty
-                  ? _firstQueryValue(query, ['fp', 'fingerprint'])
-                  : 'chrome',
-        };
-
-        final publicKey =
-            _firstQueryValue(query, ['pbk', 'publicKey']);
-        final shortId = _firstQueryValue(query, ['sid', 'shortId']);
-        final spiderX = _firstQueryValue(query, ['spx', 'spiderX']);
-        final mldsa =
-            _firstQueryValue(query, ['pqv', 'mldsa65Verify']);
-
-        if (publicKey.isNotEmpty) reality['publicKey'] = publicKey;
-        if (shortId.isNotEmpty) reality['shortId'] = shortId;
-        if (spiderX.isNotEmpty) reality['spiderX'] = spiderX;
-        if (mldsa.isNotEmpty) reality['mldsa65Verify'] = mldsa;
-
-        stream['realitySettings'] = reality;
-      }
-
-      return json.encode(_baseConfig(outbound));
+    } catch (e) {
+      debugPrint('Universal builder failed, using library parser: $e');
     }
 
     final parser = V2ray.parseFromURL(configUrl);
@@ -1591,7 +1357,503 @@ class _ServerListScreenState extends State<ServerListScreen>
     return generated;
   }
 
-  // For WebSocket links we build two candidate configs: our own builder and the
+
+  // ====================== Universal link -> Xray outbound ======================
+
+  String _decodeB64Loose(String input) {
+    final normalized =
+        input.trim().replaceAll('-', '+').replaceAll('_', '/');
+    return utf8.decode(base64.decode(base64.normalize(normalized)));
+  }
+
+  bool _isTrueValue(String value) {
+    final lower = value.trim().toLowerCase();
+    return lower == '1' || lower == 'true' || lower == 'yes';
+  }
+
+  String _str(dynamic value) => value == null ? '' : value.toString().trim();
+
+  String _normalizeNetwork(String raw) {
+    switch (raw.toLowerCase().trim()) {
+      case '':
+      case 'tcp':
+      case 'raw':
+        return 'tcp';
+      case 'kcp':
+      case 'mkcp':
+        return 'kcp';
+      case 'h2':
+      case 'http':
+        return 'http';
+      case 'gun':
+      case 'grpc':
+        return 'grpc';
+      case 'splithttp':
+      case 'xhttp':
+        return 'xhttp';
+      default:
+        return raw.toLowerCase().trim();
+    }
+  }
+
+  Map<String, dynamic> _buildStreamSettings(
+    Map<String, String> q,
+    String serverHost,
+  ) {
+    final network = _normalizeNetwork(_firstQueryValue(q, ['type', 'network']));
+    var security = _firstQueryValue(q, ['security']).toLowerCase();
+    if (security == 'xtls') security = 'tls';
+    if (security.isEmpty) security = 'none';
+
+    final host = _firstQueryValue(q, ['host']);
+    final path = _firstQueryValue(q, ['path']);
+    final headerType = _firstQueryValue(q, ['headerType']);
+
+    final stream = <String, dynamic>{
+      'network': network,
+      'security': security,
+    };
+
+    switch (network) {
+      case 'tcp':
+        if (headerType == 'http') {
+          stream['tcpSettings'] = <String, dynamic>{
+            'header': <String, dynamic>{
+              'type': 'http',
+              'request': <String, dynamic>{
+                'version': '1.1',
+                'method': 'GET',
+                'path': path.isEmpty ? ['/'] : _splitCsv(path),
+                'headers': <String, dynamic>{
+                  'Host': _splitCsv(host),
+                  'User-Agent': [
+                    'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
+                        '(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36',
+                  ],
+                  'Accept-Encoding': ['gzip, deflate'],
+                  'Connection': ['keep-alive'],
+                  'Pragma': 'no-cache',
+                },
+              },
+            },
+          };
+        }
+        break;
+      case 'kcp':
+        final seed = _firstQueryValue(q, ['seed']);
+        stream['kcpSettings'] = <String, dynamic>{
+          'mtu': 1350,
+          'tti': 50,
+          'uplinkCapacity': 12,
+          'downlinkCapacity': 100,
+          'congestion': false,
+          'readBufferSize': 1,
+          'writeBufferSize': 1,
+          'header': <String, dynamic>{
+            'type': headerType.isEmpty ? 'none' : headerType,
+          },
+          if (seed.isNotEmpty) 'seed': seed,
+        };
+        break;
+      case 'ws':
+        final ws = <String, dynamic>{'path': path.isEmpty ? '/' : path};
+        if (host.isNotEmpty) {
+          ws['headers'] = <String, dynamic>{'Host': host};
+        }
+        stream['wsSettings'] = ws;
+        break;
+      case 'httpupgrade':
+        stream['httpupgradeSettings'] = <String, dynamic>{
+          'path': path.isEmpty ? '/' : path,
+          if (host.isNotEmpty) 'host': host,
+        };
+        break;
+      case 'xhttp':
+        final xMode = _firstQueryValue(q, ['mode']);
+        final xhttp = <String, dynamic>{
+          'path': path.isEmpty ? '/' : path,
+          'mode': xMode.isEmpty ? 'auto' : xMode,
+          if (host.isNotEmpty) 'host': host,
+        };
+        final extra = q['extra'];
+        if (extra != null && extra.trim().isNotEmpty) {
+          try {
+            xhttp['extra'] = json.decode(extra);
+          } catch (_) {}
+        }
+        stream['xhttpSettings'] = xhttp;
+        break;
+      case 'grpc':
+        final serviceName = _firstQueryValue(q, ['serviceName']);
+        final authority = _firstQueryValue(q, ['authority']);
+        final gMode = _firstQueryValue(q, ['mode']).toLowerCase();
+        stream['grpcSettings'] = <String, dynamic>{
+          'serviceName': serviceName,
+          'multiMode': gMode == 'multi',
+          if (authority.isNotEmpty) 'authority': authority,
+        };
+        break;
+      case 'http':
+        stream['httpSettings'] = <String, dynamic>{
+          'path': path.isEmpty ? '/' : path,
+          if (host.isNotEmpty) 'host': _splitCsv(host),
+        };
+        break;
+      case 'quic':
+        stream['quicSettings'] = <String, dynamic>{
+          'security': _firstQueryValue(q, ['quicSecurity']).isEmpty
+              ? 'none'
+              : _firstQueryValue(q, ['quicSecurity']),
+          'key': q['key'] ?? '',
+          'header': <String, dynamic>{
+            'type': headerType.isEmpty ? 'none' : headerType,
+          },
+        };
+        break;
+      default:
+        break;
+    }
+
+    final sni = _firstQueryValue(q, ['sni', 'serverName', 'peer']);
+    final fingerprint = _firstQueryValue(q, ['fp', 'fingerprint']);
+
+    if (security == 'tls') {
+      final tls = <String, dynamic>{};
+      tls['serverName'] =
+          sni.isNotEmpty ? sni : (host.isNotEmpty ? host : serverHost);
+      if (fingerprint.isNotEmpty) tls['fingerprint'] = fingerprint;
+
+      final alpn = _firstQueryValue(q, ['alpn']);
+      if (alpn.isNotEmpty) tls['alpn'] = _splitCsv(alpn);
+
+      final ech = _firstQueryValue(q, ['echConfigList', 'ech']);
+      if (ech.isNotEmpty) tls['echConfigList'] = ech;
+
+      final vcn = _firstQueryValue(q, ['vcn', 'verifyPeerCertByName']);
+      if (vcn.isNotEmpty) tls['verifyPeerCertByName'] = vcn;
+
+      final pcs = _firstQueryValue(q, ['pcs', 'pinnedPeerCertSha256']);
+      if (pcs.isNotEmpty) tls['pinnedPeerCertSha256'] = pcs;
+
+      if (_isTrueValue(_firstQueryValue(q, ['allowInsecure', 'insecure']))) {
+        tls['allowInsecure'] = true;
+      }
+      stream['tlsSettings'] = tls;
+    } else if (security == 'reality') {
+      final reality = <String, dynamic>{
+        'show': false,
+        'serverName':
+            sni.isNotEmpty ? sni : (host.isNotEmpty ? host : serverHost),
+        'fingerprint': fingerprint.isNotEmpty ? fingerprint : 'chrome',
+      };
+      final publicKey = _firstQueryValue(q, ['pbk', 'publicKey']);
+      final shortId = _firstQueryValue(q, ['sid', 'shortId']);
+      final spiderX = _firstQueryValue(q, ['spx', 'spiderX']);
+      final mldsa = _firstQueryValue(q, ['pqv', 'mldsa65Verify']);
+      if (publicKey.isNotEmpty) reality['publicKey'] = publicKey;
+      if (shortId.isNotEmpty) reality['shortId'] = shortId;
+      if (spiderX.isNotEmpty) reality['spiderX'] = spiderX;
+      if (mldsa.isNotEmpty) reality['mldsa65Verify'] = mldsa;
+      stream['realitySettings'] = reality;
+    }
+
+    return stream;
+  }
+
+  Map<String, dynamic>? _buildOutboundFromUri(
+    Uri uri,
+    Map<String, String> query,
+  ) {
+    final scheme = uri.scheme.toLowerCase();
+    const supported = {
+      'vless',
+      'vmess',
+      'trojan',
+      'ss',
+      'shadowsocks',
+      'socks',
+      'socks5',
+      'http',
+      'https',
+    };
+    if (!supported.contains(scheme)) return null;
+
+    final server = uri.host;
+    if (server.isEmpty) {
+      throw const FormatException('Config has no server address');
+    }
+    final port = uri.hasPort ? uri.port : 443;
+
+    var userInfo = uri.userInfo;
+    try {
+      userInfo = Uri.decodeComponent(uri.userInfo);
+    } catch (_) {}
+
+    var q = query;
+    if (scheme == 'trojan' && !q.containsKey('security')) {
+      q = Map<String, String>.from(q)..['security'] = 'tls';
+    }
+
+    final outbound = <String, dynamic>{
+      'settings': <String, dynamic>{},
+      'mux': <String, dynamic>{'enabled': false},
+    };
+    final settings = outbound['settings'] as Map<String, dynamic>;
+
+    switch (scheme) {
+      case 'vless':
+        if (userInfo.isEmpty) {
+          throw const FormatException('VLESS config has no user ID');
+        }
+        outbound['protocol'] = 'vless';
+        final flow = _firstQueryValue(q, ['flow']);
+        final enc = _firstQueryValue(q, ['encryption']);
+        settings['vnext'] = [
+          {
+            'address': server,
+            'port': port,
+            'users': [
+              {
+                'id': userInfo,
+                'encryption': enc.isEmpty ? 'none' : enc,
+                'level': 8,
+                if (flow.isNotEmpty) 'flow': flow,
+              },
+            ],
+          },
+        ];
+        outbound['streamSettings'] = _buildStreamSettings(q, server);
+        break;
+
+      case 'vmess':
+        if (userInfo.isEmpty) {
+          throw const FormatException('VMess config has no user ID');
+        }
+        outbound['protocol'] = 'vmess';
+        final scy = _firstQueryValue(q, ['scy', 'encryption']);
+        settings['vnext'] = [
+          {
+            'address': server,
+            'port': port,
+            'users': [
+              {
+                'id': userInfo,
+                'alterId': int.tryParse(q['aid'] ?? '0') ?? 0,
+                'security': scy.isEmpty ? 'auto' : scy,
+                'level': 8,
+              },
+            ],
+          },
+        ];
+        outbound['streamSettings'] = _buildStreamSettings(q, server);
+        break;
+
+      case 'trojan':
+        if (userInfo.isEmpty) {
+          throw const FormatException('Trojan config has no password');
+        }
+        outbound['protocol'] = 'trojan';
+        final trojanFlow = _firstQueryValue(q, ['flow']);
+        settings['servers'] = [
+          {
+            'address': server,
+            'port': port,
+            'password': userInfo,
+            'level': 8,
+            if (trojanFlow.isNotEmpty) 'flow': trojanFlow,
+          },
+        ];
+        outbound['streamSettings'] = _buildStreamSettings(q, server);
+        break;
+
+      case 'ss':
+      case 'shadowsocks':
+        var method = '';
+        var password = '';
+        if (userInfo.contains(':')) {
+          final idx = userInfo.indexOf(':');
+          method = userInfo.substring(0, idx);
+          password = userInfo.substring(idx + 1);
+        } else {
+          final decoded = _decodeB64Loose(uri.userInfo);
+          final idx = decoded.indexOf(':');
+          if (idx < 0) {
+            throw const FormatException('Invalid Shadowsocks user info');
+          }
+          method = decoded.substring(0, idx);
+          password = decoded.substring(idx + 1);
+        }
+        outbound['protocol'] = 'shadowsocks';
+        settings['servers'] = [
+          {
+            'address': server,
+            'port': port,
+            'method': method,
+            'password': password,
+            'level': 8,
+          },
+        ];
+        break;
+
+      case 'socks':
+      case 'socks5':
+      case 'http':
+      case 'https':
+        outbound['protocol'] =
+            (scheme == 'socks' || scheme == 'socks5') ? 'socks' : 'http';
+        var user = '';
+        var pass = '';
+        if (userInfo.isNotEmpty) {
+          var plain = userInfo;
+          if (!plain.contains(':')) {
+            try {
+              plain = _decodeB64Loose(uri.userInfo);
+            } catch (_) {}
+          }
+          final idx = plain.indexOf(':');
+          if (idx >= 0) {
+            user = plain.substring(0, idx);
+            pass = plain.substring(idx + 1);
+          } else {
+            user = plain;
+          }
+        }
+        settings['servers'] = [
+          {
+            'address': server,
+            'port': uri.hasPort ? uri.port : (scheme == 'https' ? 443 : 1080),
+            if (user.isNotEmpty)
+              'users': [
+                {'user': user, 'pass': pass},
+              ],
+          },
+        ];
+        if (scheme == 'https' ||
+            _firstQueryValue(q, ['security']).toLowerCase() == 'tls') {
+          outbound['streamSettings'] = _buildStreamSettings(
+            Map<String, String>.from(q)..['security'] = 'tls',
+            server,
+          );
+        }
+        break;
+    }
+
+    return outbound;
+  }
+
+  // vmess://BASE64(JSON) in the v2rayN format.
+  Map<String, dynamic>? _buildVmessFromBase64(String url) {
+    var body = url.substring('vmess://'.length);
+    final hash = body.indexOf('#');
+    if (hash >= 0) body = body.substring(0, hash);
+    if (body.contains('@')) return null; // URI-style, handled elsewhere
+
+    final decoded = json.decode(_decodeB64Loose(body));
+    if (decoded is! Map) return null;
+    final j = Map<String, dynamic>.from(decoded);
+
+    final address = _str(j['add']);
+    final id = _str(j['id']);
+    final port = int.tryParse(_str(j['port'])) ?? 443;
+    if (address.isEmpty || id.isEmpty) {
+      throw const FormatException('VMess JSON has no address or id');
+    }
+
+    final net = _normalizeNetwork(_str(j['net']));
+    final type = _str(j['type']);
+    final host = _str(j['host']);
+    final path = _str(j['path']);
+    final tlsValue = _str(j['tls']).toLowerCase();
+
+    final q = <String, String>{
+      'type': net,
+      'security': (tlsValue == 'tls' || tlsValue == 'reality') ? tlsValue : 'none',
+    };
+    if (_str(j['sni']).isNotEmpty) q['sni'] = _str(j['sni']);
+    if (_str(j['alpn']).isNotEmpty) q['alpn'] = _str(j['alpn']);
+    if (_str(j['fp']).isNotEmpty) q['fp'] = _str(j['fp']);
+    if (_isTrueValue(_str(j['allowInsecure'])) ||
+        _isTrueValue(_str(j['insecure']))) {
+      q['allowInsecure'] = '1';
+    }
+
+    switch (net) {
+      case 'kcp':
+        if (type.isNotEmpty) q['headerType'] = type;
+        if (path.isNotEmpty) q['seed'] = path;
+        break;
+      case 'grpc':
+        q['serviceName'] = path;
+        if (type.isNotEmpty) q['mode'] = type;
+        if (host.isNotEmpty) q['authority'] = host;
+        break;
+      case 'quic':
+        if (type.isNotEmpty) q['headerType'] = type;
+        if (host.isNotEmpty) q['quicSecurity'] = host;
+        if (path.isNotEmpty) q['key'] = path;
+        break;
+      default:
+        if (type.isNotEmpty && type != 'none') q['headerType'] = type;
+        if (host.isNotEmpty) q['host'] = host;
+        if (path.isNotEmpty) q['path'] = path;
+        break;
+    }
+
+    final scy = _str(j['scy']);
+    return <String, dynamic>{
+      'protocol': 'vmess',
+      'settings': <String, dynamic>{
+        'vnext': [
+          {
+            'address': address,
+            'port': port,
+            'users': [
+              {
+                'id': id,
+                'alterId': int.tryParse(_str(j['aid'])) ?? 0,
+                'security': scy.isEmpty ? 'auto' : scy,
+                'level': 8,
+              },
+            ],
+          },
+        ],
+      },
+      'streamSettings': _buildStreamSettings(q, address),
+      'mux': <String, dynamic>{'enabled': false},
+    };
+  }
+
+  // Legacy ss://BASE64(method:password@host:port)
+  Map<String, dynamic>? _buildShadowsocksLegacy(String url) {
+    var body = url.substring('ss://'.length);
+    final hash = body.indexOf('#');
+    if (hash >= 0) body = body.substring(0, hash);
+    final qm = body.indexOf('?');
+    if (qm >= 0) body = body.substring(0, qm);
+    if (body.contains('@')) return null; // SIP002, handled by the URI builder
+
+    final decoded = _decodeB64Loose(body);
+    final match = RegExp(r'^([^:]+):(.*)@(.+):(\d+)$').firstMatch(decoded);
+    if (match == null) return null;
+
+    return <String, dynamic>{
+      'protocol': 'shadowsocks',
+      'settings': <String, dynamic>{
+        'servers': [
+          {
+            'address': match.group(3)!,
+            'port': int.parse(match.group(4)!),
+            'method': match.group(1)!,
+            'password': match.group(2)!,
+            'level': 8,
+          },
+        ],
+      },
+      'mux': <String, dynamic>{'enabled': false},
+    };
+  }
+
+  // For every link we build two candidate configs: our own universal builder and the
   // library's parser. Whichever answers the delay test is remembered and used to connect.
   final Map<String, int> _configVariant = {};
 
@@ -1612,12 +1874,7 @@ class _ServerListScreenState extends State<ServerListScreen>
 
     final scheme = uri.scheme.toLowerCase();
     final query = _rawQueryParametersPreservePlus(uri);
-    final network = _firstQueryValue(query, ['type', 'network']).toLowerCase();
-
-    if (network != 'ws' ||
-        !(scheme == 'vless' || scheme == 'vmess' || scheme == 'trojan')) {
-      return null;
-    }
+    if (scheme.isEmpty) return null;
 
     final generated = V2ray.parseFromURL(configUrl).getFullConfiguration();
     final decoded = json.decode(generated);
