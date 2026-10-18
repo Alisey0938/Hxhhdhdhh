@@ -1917,6 +1917,99 @@ class _ServerListScreenState extends State<ServerListScreen>
     return null;
   }
 
+
+  // Minimal variant: only the proxy outbound + direct, one socks inbound, no dns/routing.
+  // Used when the core rejects or cannot run the richer config.
+  String? _minimalVariant(String configJson) {
+    try {
+      final decoded = json.decode(configJson);
+      if (decoded is! Map) return null;
+      final outs = decoded['outbounds'];
+      if (outs is! List || outs.isEmpty || outs.first is! Map) return null;
+      final proxy = Map<String, dynamic>.from(outs.first as Map);
+      proxy['tag'] = 'proxy';
+      return json.encode(<String, dynamic>{
+        'log': <String, dynamic>{'loglevel': 'warning'},
+        'inbounds': [
+          {
+            'tag': 'socks',
+            'listen': '127.0.0.1',
+            'port': 10808,
+            'protocol': 'socks',
+            'settings': {'auth': 'noauth', 'udp': true},
+            'sniffing': {
+              'enabled': true,
+              'destOverride': ['http', 'tls'],
+            },
+          },
+        ],
+        'outbounds': [
+          proxy,
+          {'tag': 'direct', 'protocol': 'freedom', 'settings': {}},
+        ],
+      });
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Network-level check done from Dart (same app network as the core):
+  // TCP connect, then for plain WebSocket links a raw HTTP upgrade request.
+  Future<String> _diagnoseLink(String rawUrl) async {
+    final buf = StringBuffer();
+    try {
+      final uri = Uri.parse(_cleanUrl(rawUrl));
+      final q = _rawQueryParametersPreservePlus(uri);
+      final host = uri.host;
+      final port = uri.hasPort ? uri.port : 443;
+      final path =
+          _firstQueryValue(q, ['path']).isEmpty ? '/' : _firstQueryValue(q, ['path']);
+      final hostHeader =
+          _firstQueryValue(q, ['host']).isEmpty ? host : _firstQueryValue(q, ['host']);
+      final network = _firstQueryValue(q, ['type', 'network']).toLowerCase();
+      final security = _firstQueryValue(q, ['security']).toLowerCase();
+
+      final sw = Stopwatch()..start();
+      Socket socket;
+      try {
+        socket = await Socket.connect(
+          host,
+          port,
+          timeout: const Duration(seconds: 6),
+        );
+        buf.writeln('TCP $host:$port OK (${sw.elapsedMilliseconds} ms)');
+      } catch (e) {
+        buf.writeln('TCP $host:$port FAILED: $e');
+        return buf.toString();
+      }
+
+      try {
+        if (network == 'ws' && (security.isEmpty || security == 'none')) {
+          socket.write(
+            'GET $path HTTP/1.1\r\n'
+            'Host: $hostHeader\r\n'
+            'Upgrade: websocket\r\n'
+            'Connection: Upgrade\r\n'
+            'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n'
+            'Sec-WebSocket-Version: 13\r\n\r\n',
+          );
+          await socket.flush();
+          final chunk = await socket.first.timeout(const Duration(seconds: 6));
+          final text = utf8.decode(chunk, allowMalformed: true);
+          final firstLine = text.split('\r\n').first;
+          buf.writeln('WS upgrade (Host: $hostHeader, path: $path) -> $firstLine');
+        }
+      } catch (e) {
+        buf.writeln('WS upgrade check failed: $e');
+      } finally {
+        socket.destroy();
+      }
+    } catch (e) {
+      buf.writeln('diagnostic error: $e');
+    }
+    return buf.toString();
+  }
+
   Future<String> _collectCoreLogs() async {
     try {
       final logs = await flutterV2ray.getLogs();
@@ -1997,6 +2090,8 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
     final noSec = _withoutNoneSecurity(primary);
     if (noSec != null) result.add(noSec);
+    final minimal = _minimalVariant(primary);
+    if (minimal != null) result.add(minimal);
     return result;
   }
 
@@ -2201,9 +2296,11 @@ class _ServerListScreenState extends State<ServerListScreen>
 
       if (!connectedOk && !_isConnected) {
         final logs = await _collectCoreLogs();
+        final diag = await _diagnoseLink(rawUrl);
         _showCoreLogDialog(
           'variant=$variant of ${candidates.length}\n'
           'ping=${_pings[_selectedConfigId ?? ''] ?? -1}\n\n'
+          '--- network check ---\n$diag\n'
           '--- core logs ---\n$logs\n\n'
           '--- config used ---\n$chosenConfig',
         );
