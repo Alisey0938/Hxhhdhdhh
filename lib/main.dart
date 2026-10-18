@@ -1832,25 +1832,40 @@ class _ServerListScreenState extends State<ServerListScreen>
 
   Widget _buildAnnouncementBanner() {
     if (_announcementData.isEmpty) return const SizedBox.shrink();
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: _announcementData.map((announcement) {
         final text = (announcement['text'] ?? '').toString();
         final imageUrl = (announcement['image_url'] ?? '').toString();
-        final targetUrl = (announcement['target_url'] ?? '').toString();
+        final targetUrl = (announcement['target_url'] ?? '').toString().trim();
+        final hasLink = targetUrl.isNotEmpty;
 
         return GestureDetector(
-          onTap: () async {
-            if (targetUrl.isEmpty) return;
-            final uri = Uri.tryParse(targetUrl);
-            if (uri == null) return;
-            try {
-              if (await canLaunchUrl(uri)) {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              }
-            } catch (_) {}
-          },
+          onTap: !hasLink
+              ? null
+              : () async {
+                  final uri = Uri.tryParse(targetUrl);
+                  if (uri == null || !uri.hasScheme) return;
+                  try {
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+                  } catch (_) {}
+                },
           child: Container(
-            margin: const EdgeInsets.all(12),
+            // Match the horizontal width and alignment of the config cards
+            // (ListView horizontal padding: 12 and card bottom margin: 10).
+            width: double.infinity,
+            margin: const EdgeInsets.only(
+              left: 12,
+              right: 12,
+              top: 6,
+              bottom: 4,
+            ),
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: const Color(0xFF2E354F),
@@ -1860,7 +1875,8 @@ class _ServerListScreenState extends State<ServerListScreen>
               ),
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 if (imageUrl.isNotEmpty)
                   ClipRRect(
@@ -1872,9 +1888,52 @@ class _ServerListScreenState extends State<ServerListScreen>
                       errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                     ),
                   ),
-                if (text.isNotEmpty) ...[
+                if (text.isNotEmpty || hasLink) ...[
                   if (imageUrl.isNotEmpty) const SizedBox(height: 8),
-                  Text(text, style: const TextStyle(height: 1.5)),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      if (text.isNotEmpty)
+                        Expanded(
+                          child: Text(
+                            text,
+                            style: const TextStyle(height: 1.5),
+                          ),
+                        ),
+                      if (hasLink) ...[
+                        if (text.isNotEmpty) const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF8B5CF6).withOpacity(0.16),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.open_in_new_rounded,
+                                size: 16,
+                                color: Color(0xFFC4B5FD),
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'مشاهده لینک',
+                                style: TextStyle(
+                                  color: Color(0xFFC4B5FD),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ],
             ),
