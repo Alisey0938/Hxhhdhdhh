@@ -2013,6 +2013,93 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
   }
 
+
+  // Config shaped exactly like what v2rayNG exports for the same link: no "security"
+  // key for plain transports, ws Host inside headers, simple dns/routing, socks inbound
+  // on 10808, "freedom" with settings.domainStrategy and a blackhole "block" outbound.
+  String? _v2rayNgStyleVariant(String configJson) {
+    try {
+      final decoded = json.decode(configJson);
+      if (decoded is! Map) return null;
+      final outs = decoded['outbounds'];
+      if (outs is! List || outs.isEmpty || outs.first is! Map) return null;
+      final proxy = Map<String, dynamic>.from(outs.first as Map);
+      proxy['tag'] = 'proxy';
+
+      final stream = proxy['streamSettings'];
+      if (stream is Map) {
+        if (stream['security'] == 'none') stream.remove('security');
+        final ws = stream['wsSettings'];
+        if (ws is Map) {
+          final host = ws['host']?.toString() ?? '';
+          if (host.isNotEmpty) {
+            final headers = ws['headers'] is Map
+                ? Map<String, dynamic>.from(ws['headers'] as Map)
+                : <String, dynamic>{};
+            headers['Host'] = host;
+            ws['headers'] = headers;
+            ws.remove('host');
+          }
+        }
+      }
+      proxy['mux'] = <String, dynamic>{'enabled': false, 'concurrency': -1};
+
+      return json.encode(<String, dynamic>{
+        'log': <String, dynamic>{'loglevel': 'warning'},
+        'dns': <String, dynamic>{
+          'servers': ['1.1.1.1', '8.8.8.8'],
+        },
+        'inbounds': [
+          {
+            'tag': 'socks',
+            'listen': '127.0.0.1',
+            'port': 10808,
+            'protocol': 'socks',
+            'settings': {'auth': 'noauth', 'udp': true, 'userLevel': 8},
+            'sniffing': {
+              'enabled': true,
+              'destOverride': ['http', 'tls'],
+              'routeOnly': false,
+            },
+          },
+        ],
+        'outbounds': [
+          proxy,
+          {
+            'tag': 'direct',
+            'protocol': 'freedom',
+            'settings': {'domainStrategy': 'UseIP'},
+          },
+          {
+            'tag': 'block',
+            'protocol': 'blackhole',
+            'settings': {
+              'response': {'type': 'http'},
+            },
+          },
+        ],
+        'routing': <String, dynamic>{
+          'domainStrategy': 'AsIs',
+          'rules': [
+            {
+              'type': 'field',
+              'domain': ['full:socialmedia-ad.ir'],
+              'outboundTag': 'direct',
+            },
+            {
+              'type': 'field',
+              'network': 'udp',
+              'port': '443',
+              'outboundTag': 'block',
+            },
+          ],
+        },
+      });
+    } catch (_) {
+      return null;
+    }
+  }
+
   // Minimal variant: only the proxy outbound + direct, one socks inbound, no dns/routing.
   // Used when the core rejects or cannot run the richer config.
   String? _minimalVariant(String configJson) {
@@ -2222,6 +2309,11 @@ class _ServerListScreenState extends State<ServerListScreen>
     // Last resort for older cores: Host inside headers.
     final legacy = _hostIntoHeaders(normalized.first);
     if (legacy != null) normalized.add(legacy);
+
+    // v2rayNG-shaped config goes first, so it is the default when no ping succeeds.
+    // It is added after normalization on purpose (it keeps Host inside headers).
+    final v2rayNg = _v2rayNgStyleVariant(normalized.first);
+    if (v2rayNg != null) normalized.insert(0, v2rayNg);
     return normalized;
   }
 
