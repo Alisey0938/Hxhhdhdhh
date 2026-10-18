@@ -1095,7 +1095,7 @@ class _ServerListScreenState extends State<ServerListScreen>
           'settings': {'auth': 'noauth', 'udp': true},
           'sniffing': {
             'enabled': true,
-            'destOverride': ['http', 'tls', 'quic'],
+            'destOverride': ['http', 'tls'],
           },
         }
       ],
@@ -1120,10 +1120,6 @@ class _ServerListScreenState extends State<ServerListScreen>
             'outboundTag': 'direct'
           }
         ]
-      },
-      'mux': {
-        'enabled': true,
-        'concurrency': 8,
       },
     };
   }
@@ -1188,7 +1184,7 @@ class _ServerListScreenState extends State<ServerListScreen>
         final overrides = rawOverrides is List
             ? rawOverrides.map((value) => value.toString()).toList()
             : <String>[];
-        for (final protocol in const ['http', 'tls', 'quic']) {
+        for (final protocol in const ['http', 'tls']) {
           if (!overrides.contains(protocol)) overrides.add(protocol);
         }
         sniffing['destOverride'] = overrides;
@@ -2179,57 +2175,38 @@ class _ServerListScreenState extends State<ServerListScreen>
         'network=$debugNetwork',
       );
 
-      // Try the variant that passed the ping test first, then the others.
-      final order = <int>[
-        variant,
-        for (var i = 0; i < candidates.length; i++)
-          if (i != variant) i,
-      ];
+      // Start the VPN service exactly ONCE with the variant that passed the ping
+      // test (or the primary one). Starting/stopping the service repeatedly in quick
+      // succession makes the plugin crash with ForegroundServiceDidNotStartInTimeException.
+      final chosenConfig = candidates[variant];
+
+      await flutterV2ray.startV2Ray(
+        remark: remark,
+        config: chosenConfig,
+        proxyOnly: false,
+      );
 
       var connectedOk = false;
-      var lastLogs = '';
-
-      for (var n = 0; n < order.length; n++) {
-        final idx = order[n];
-
-        if (n > 0) {
-          debugPrint('V2Ray: retrying with config variant $idx');
-          try {
-            await flutterV2ray.stopV2Ray();
-          } catch (_) {}
-          await Future<void>.delayed(const Duration(milliseconds: 800));
-          if (!mounted || _userWantsDisconnect) return;
-          setState(() => _isConnectingProcess = true);
-        }
-
-        await flutterV2ray.startV2Ray(
-          remark: remark,
-          config: candidates[idx],
-          proxyOnly: false,
-        );
-
-        for (var t = 0; t < 36; t++) {
-          await Future<void>.delayed(const Duration(milliseconds: 250));
-          if (!mounted || _userWantsDisconnect) return;
-          if (_isConnected) {
-            connectedOk = true;
-            break;
-          }
-        }
-
-        if (connectedOk) {
-          _configVariant[_selectedConfigId ?? ''] = idx;
+      for (var t = 0; t < 48; t++) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        if (!mounted || _userWantsDisconnect) return;
+        if (_isConnected) {
+          connectedOk = true;
           break;
         }
-
-        lastLogs = await _collectCoreLogs();
       }
 
       if (!mounted) return;
       setState(() => _isConnectingProcess = false);
 
       if (!connectedOk && !_isConnected) {
-        _showCoreLogDialog(lastLogs);
+        final logs = await _collectCoreLogs();
+        _showCoreLogDialog(
+          'variant=$variant of ${candidates.length}\n'
+          'ping=${_pings[_selectedConfigId ?? ''] ?? -1}\n\n'
+          '--- core logs ---\n$logs\n\n'
+          '--- config used ---\n$chosenConfig',
+        );
       }
     } catch (e, stackTrace) {
       debugPrint('V2Ray start failed: $e');
