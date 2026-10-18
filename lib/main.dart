@@ -92,6 +92,102 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
 
   bool _isLoading = false;
+  bool _isLoadingLoginAnnouncements = true;
+  List<Map<String, dynamic>> _loginAnnouncements = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLoginAnnouncements();
+  }
+
+  Future<void> _fetchLoginAnnouncements() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$apiBase?action=get_login_announcements'))
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return;
+      final dynamic data = json.decode(response.body);
+      if (!mounted) return;
+      setState(() {
+        _loginAnnouncements = data is List
+            ? data
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .where((item) => item['enabled'] == 1 ||
+                    item['enabled'] == true ||
+                    item['enabled']?.toString() == '1')
+                .toList()
+            : [];
+      });
+    } catch (_) {
+      // Login must remain available even if announcements cannot be loaded.
+    } finally {
+      if (mounted) setState(() => _isLoadingLoginAnnouncements = false);
+    }
+  }
+
+  Widget _buildLoginAnnouncements() {
+    if (_loginAnnouncements.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: _loginAnnouncements.map((announcement) {
+        final text = (announcement['text'] ?? '').toString();
+        final imageUrl = (announcement['image_url'] ?? '').toString();
+        final targetUrl = (announcement['target_url'] ?? '').toString();
+        return GestureDetector(
+          onTap: () async {
+            if (targetUrl.isEmpty) return;
+            final uri = Uri.tryParse(targetUrl);
+            if (uri == null) return;
+            try {
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            } catch (_) {}
+          },
+          child: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2E354F),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF8B5CF6).withOpacity(0.5)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (imageUrl.isNotEmpty)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      imageUrl,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
+                  ),
+                if (text.isNotEmpty) ...[
+                  if (imageUrl.isNotEmpty) const SizedBox(height: 8),
+                  Text(text, textAlign: TextAlign.right,
+                      style: const TextStyle(color: Colors.white, height: 1.5)),
+                ],
+                if (targetUrl.isNotEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 6),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Icon(Icons.open_in_new, size: 16, color: Color(0xFFB9C5FF)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
 
   Future<String> _getDeviceId() async {
     try {
@@ -227,7 +323,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   letterSpacing: 1.5,
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
+              _buildLoginAnnouncements(),
+              const SizedBox(height: 8),
               TextField(
                 controller: _usernameController,
                 decoration: InputDecoration(
@@ -319,7 +417,7 @@ class _ServerListScreenState extends State<ServerListScreen>
   String? _deviceId;
 
   Map<String, dynamic>? _userData;
-  Map<String, dynamic>? _announcementData;
+  List<Map<String, dynamic>> _announcementData = [];
 
   int _lastSessionUpload = 0;
   int _lastSessionDownload = 0;
@@ -469,7 +567,7 @@ class _ServerListScreenState extends State<ServerListScreen>
   Future<void> _fetchAnnouncement() async {
     try {
       final response = await http
-          .get(Uri.parse('$apiBase?action=get_announcement'))
+          .get(Uri.parse('$apiBase?action=get_app_announcements'))
           .timeout(const Duration(seconds: 15));
 
       if (response.statusCode != 200 || response.body.trim() == 'null') {
@@ -478,9 +576,13 @@ class _ServerListScreenState extends State<ServerListScreen>
 
       final dynamic data = json.decode(response.body);
 
-      if (mounted && data is Map) {
+      if (mounted && data is List) {
         setState(() {
-          _announcementData = Map<String, dynamic>.from(data);
+          _announcementData = data
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .where((item) => _isTruthy(item['enabled']))
+              .toList();
         });
       }
     } catch (_) {}
@@ -1619,87 +1721,56 @@ class _ServerListScreenState extends State<ServerListScreen>
   }
 
   Widget _buildAnnouncementBanner() {
-    if (_announcementData == null ||
-        !_isTruthy(_announcementData!['enabled'])) {
-      return const SizedBox.shrink();
-    }
+    if (_announcementData.isEmpty) return const SizedBox.shrink();
+    return Column(
+      children: _announcementData.map((announcement) {
+        final text = (announcement['text'] ?? '').toString();
+        final imageUrl = (announcement['image_url'] ?? '').toString();
+        final targetUrl = (announcement['target_url'] ?? '').toString();
 
-    final text = (_announcementData!['text'] ?? '').toString();
-    final imageUrl = (_announcementData!['image_url'] ?? '').toString();
-    final targetUrl = (_announcementData!['target_url'] ?? '').toString();
-
-    return GestureDetector(
-      onTap: () async {
-        if (targetUrl.isEmpty) return;
-
-        final uri = Uri.tryParse(targetUrl);
-        if (uri == null) return;
-
-        try {
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(
-              uri,
-              mode: LaunchMode.externalApplication,
-            );
-          }
-        } catch (_) {}
-      },
-      child: Container(
-        margin: const EdgeInsets.all(12),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF2E354F),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: const Color(0xFF8B5CF6).withOpacity(0.5),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (imageUrl.isNotEmpty)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  imageUrl,
-                  width: double.infinity,
-                  height: 120,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
+        return GestureDetector(
+          onTap: () async {
+            if (targetUrl.isEmpty) return;
+            final uri = Uri.tryParse(targetUrl);
+            if (uri == null) return;
+            try {
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            } catch (_) {}
+          },
+          child: Container(
+            margin: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2E354F),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFF8B5CF6).withOpacity(0.5),
               ),
-            if (imageUrl.isNotEmpty && text.isNotEmpty)
-              const SizedBox(height: 8),
-            if (text.isNotEmpty)
-              Row(
-                children: [
-                  const Icon(
-                    Icons.campaign,
-                    color: Color(0xFFA78BFA),
-                    size: 22,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      text,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (imageUrl.isNotEmpty)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      imageUrl,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                     ),
                   ),
-                  if (targetUrl.isNotEmpty)
-                    const Icon(
-                      Icons.arrow_forward_ios,
-                      color: Colors.white38,
-                      size: 14,
-                    ),
+                if (text.isNotEmpty) ...[
+                  if (imageUrl.isNotEmpty) const SizedBox(height: 8),
+                  Text(text, style: const TextStyle(height: 1.5)),
                 ],
-              ),
-          ],
-        ),
-      ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 
