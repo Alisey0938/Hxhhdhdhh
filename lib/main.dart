@@ -1983,26 +1983,50 @@ class _ServerListScreenState extends State<ServerListScreen>
         return buf.toString();
       }
 
-      try {
-        if (network == 'ws' && (security.isEmpty || security == 'none')) {
-          socket.write(
-            'GET $path HTTP/1.1\r\n'
-            'Host: $hostHeader\r\n'
-            'Upgrade: websocket\r\n'
-            'Connection: Upgrade\r\n'
-            'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n'
-            'Sec-WebSocket-Version: 13\r\n\r\n',
+      socket.destroy();
+
+      // HTTP probes on fresh connections: plain GET first, then a WebSocket upgrade.
+      Future<void> probe(String label, String request) async {
+        Socket? probeSocket;
+        final timer = Stopwatch()..start();
+        try {
+          probeSocket = await Socket.connect(
+            host,
+            port,
+            timeout: const Duration(seconds: 6),
           );
-          await socket.flush();
-          final chunk = await socket.first.timeout(const Duration(seconds: 6));
+          probeSocket.write(request);
+          await probeSocket.flush();
+          final chunk =
+              await probeSocket.first.timeout(const Duration(seconds: 20));
           final text = utf8.decode(chunk, allowMalformed: true);
-          final firstLine = text.split('\r\n').first;
-          buf.writeln('WS upgrade (Host: $hostHeader, path: $path) -> $firstLine');
+          final lines = text.split('\r\n');
+          final shown = lines.take(6).join(' | ');
+          buf.writeln('$label -> ${timer.elapsedMilliseconds} ms: $shown');
+        } catch (e) {
+          buf.writeln('$label -> FAILED after ${timer.elapsedMilliseconds} ms: $e');
+        } finally {
+          probeSocket?.destroy();
         }
-      } catch (e) {
-        buf.writeln('WS upgrade check failed: $e');
-      } finally {
-        socket.destroy();
+      }
+
+      const ua = 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
+          '(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36';
+
+      await probe(
+        'HTTP GET / (Host: $hostHeader)',
+        'GET / HTTP/1.1\r\nHost: $hostHeader\r\nUser-Agent: $ua\r\n'
+            'Connection: close\r\n\r\n',
+      );
+
+      if (network == 'ws' && (security.isEmpty || security == 'none')) {
+        await probe(
+          'WS upgrade (Host: $hostHeader, path: $path)',
+          'GET $path HTTP/1.1\r\nHost: $hostHeader\r\nUser-Agent: $ua\r\n'
+              'Upgrade: websocket\r\nConnection: Upgrade\r\n'
+              'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n'
+              'Sec-WebSocket-Version: 13\r\n\r\n',
+        );
       }
     } catch (e) {
       buf.writeln('diagnostic error: $e');
