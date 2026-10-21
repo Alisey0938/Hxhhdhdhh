@@ -1725,14 +1725,13 @@ class _ServerListScreenState extends State<ServerListScreen>
 
       final configJson = _parseConfigToJson(rawUrl);
 
-      var remark = (selectedConfig['name'] ?? 'Xray Server').toString();
-
-      try {
-        final parser = V2ray.parseFromURL(_cleanUrl(rawUrl));
-        if (parser.remark.isNotEmpty) {
-          remark = parser.remark;
-        }
-      } catch (_) {}
+      // Use the name from the admin panel/app list for the Android VPN
+      // foreground notification. The URL's #remark may still contain the
+      // old name after an admin renames a config, so do not override this
+      // value with V2ray.parseFromURL(...).remark.
+      final remark = (selectedConfig['name'] ?? 'Xray Server').toString().trim().isNotEmpty
+          ? (selectedConfig['name'] ?? 'Xray Server').toString().trim()
+          : 'Xray Server';
 
       debugPrint('V2Ray: starting profile="$remark"');
       final debugUri = Uri.tryParse(_cleanUrl(rawUrl));
