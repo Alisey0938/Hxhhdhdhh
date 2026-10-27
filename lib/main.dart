@@ -1630,7 +1630,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     });
   }
 
-  // تست پینگ دقیق برای هر کانفیگ به تفکیک دامنه‌های اختصاصی شبکه‌های اجتماعی
+  // سیستم تست پینگ دقیق و صحیح برای پینگ کل و شبکه‌های اجتماعی
   Future<void> _testServerDelay(dynamic item) async {
     if (item is! Map) return;
 
@@ -1656,10 +1656,10 @@ class _ServerListScreenState extends State<ServerListScreen>
     try {
       final configJson = _parseConfigToJson(rawUrl);
 
-      // 1. پینگ کلی (Google)
+      // 1. پینگ کل (General) - استفاده از generate_204 برای تست اتصال پایدار و دقیق بدون خطای فیلترینگ گوگل
       final delayGeneral = await flutterV2ray
-          .getServerDelay(config: configJson, url: 'https://www.google.com')
-          .timeout(const Duration(seconds: 15), onTimeout: () => -1);
+          .getServerDelay(config: configJson, url: 'https://www.gstatic.com/generate_204')
+          .timeout(const Duration(seconds: 10), onTimeout: () => -1);
 
       if (mounted) {
         setState(() {
@@ -1671,7 +1671,7 @@ class _ServerListScreenState extends State<ServerListScreen>
       // 2. پینگ دقیق تلگرام (api.telegram.org)
       final delayTelegram = await flutterV2ray
           .getServerDelay(config: configJson, url: 'https://api.telegram.org')
-          .timeout(const Duration(seconds: 15), onTimeout: () => -1);
+          .timeout(const Duration(seconds: 10), onTimeout: () => -1);
 
       if (mounted) {
         setState(() {
@@ -1683,7 +1683,7 @@ class _ServerListScreenState extends State<ServerListScreen>
       // 3. پینگ دقیق اینستاگرام (instagram.com)
       final delayInstagram = await flutterV2ray
           .getServerDelay(config: configJson, url: 'https://www.instagram.com')
-          .timeout(const Duration(seconds: 15), onTimeout: () => -1);
+          .timeout(const Duration(seconds: 10), onTimeout: () => -1);
 
       if (mounted) {
         setState(() {
@@ -1695,7 +1695,7 @@ class _ServerListScreenState extends State<ServerListScreen>
       // 4. پینگ دقیق یوتیوب (youtube.com)
       final delayYoutube = await flutterV2ray
           .getServerDelay(config: configJson, url: 'https://www.youtube.com')
-          .timeout(const Duration(seconds: 15), onTimeout: () => -1);
+          .timeout(const Duration(seconds: 10), onTimeout: () => -1);
 
       if (mounted) {
         setState(() {
