@@ -1630,7 +1630,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     });
   }
 
-  // تست پینگ عمومی و اختصاصی هر کانفیگ (به تفکیک تلگرام، اینستاگرام و یوتیوب)
+  // تست پینگ دقیق برای هر کانفیگ به تفکیک دامنه‌های اختصاصی شبکه‌های اجتماعی
   Future<void> _testServerDelay(dynamic item) async {
     if (item is! Map) return;
 
@@ -1656,7 +1656,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     try {
       final configJson = _parseConfigToJson(rawUrl);
 
-      // 1. General Ping (Google)
+      // 1. پینگ کلی (Google)
       final delayGeneral = await flutterV2ray
           .getServerDelay(config: configJson, url: 'https://www.google.com')
           .timeout(const Duration(seconds: 15), onTimeout: () => -1);
@@ -1668,9 +1668,9 @@ class _ServerListScreenState extends State<ServerListScreen>
         });
       }
 
-      // 2. Telegram Ping (t.me)
+      // 2. پینگ دقیق تلگرام (api.telegram.org)
       final delayTelegram = await flutterV2ray
-          .getServerDelay(config: configJson, url: 'https://t.me')
+          .getServerDelay(config: configJson, url: 'https://api.telegram.org')
           .timeout(const Duration(seconds: 15), onTimeout: () => -1);
 
       if (mounted) {
@@ -1680,7 +1680,7 @@ class _ServerListScreenState extends State<ServerListScreen>
         });
       }
 
-      // 3. Instagram Ping (instagram.com)
+      // 3. پینگ دقیق اینستاگرام (instagram.com)
       final delayInstagram = await flutterV2ray
           .getServerDelay(config: configJson, url: 'https://www.instagram.com')
           .timeout(const Duration(seconds: 15), onTimeout: () => -1);
@@ -1692,7 +1692,7 @@ class _ServerListScreenState extends State<ServerListScreen>
         });
       }
 
-      // 4. YouTube Ping (youtube.com)
+      // 4. پینگ دقیق یوتیوب (youtube.com)
       final delayYoutube = await flutterV2ray
           .getServerDelay(config: configJson, url: 'https://www.youtube.com')
           .timeout(const Duration(seconds: 15), onTimeout: () => -1);
@@ -1956,7 +1956,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     );
   }
 
-  // ویجت نمایش پینگ اختصاصی شبکه‌های اجتماعی
   Widget _buildSocialPingChip({
     required IconData icon,
     required String label,
@@ -2145,7 +2144,6 @@ class _ServerListScreenState extends State<ServerListScreen>
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    // ردیف اول: پروتکل، نام سرور و پینگ کلی
                                     Row(
                                       children: [
                                         Container(
@@ -2181,7 +2179,6 @@ class _ServerListScreenState extends State<ServerListScreen>
                                           ),
                                         ),
                                         const SizedBox(width: 8),
-                                        // پینگ کلی (General)
                                         Container(
                                           padding: const EdgeInsets.symmetric(
                                             horizontal: 8,
@@ -2218,11 +2215,9 @@ class _ServerListScreenState extends State<ServerListScreen>
                                     const SizedBox(height: 10),
                                     const Divider(color: Colors.white10, height: 1),
                                     const SizedBox(height: 8),
-                                    // ردیف دوم: پینگ اختصاصی شبکه‌های اجتماعی (تلگرام، اینستاگرام، یوتیوب)
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        // تلگرام
                                         _buildSocialPingChip(
                                           icon: Icons.send_rounded,
                                           label: 'تلگرام',
@@ -2230,7 +2225,6 @@ class _ServerListScreenState extends State<ServerListScreen>
                                           isLoading: _telegramPingLoading[configId] ?? false,
                                           color: const Color(0xFF229ED9),
                                         ),
-                                        // اینستاگرام
                                         _buildSocialPingChip(
                                           icon: Icons.camera_alt_rounded,
                                           label: 'اینستا',
@@ -2238,7 +2232,6 @@ class _ServerListScreenState extends State<ServerListScreen>
                                           isLoading: _instagramPingLoading[configId] ?? false,
                                           color: const Color(0xFFE1306C),
                                         ),
-                                        // یوتیوب
                                         _buildSocialPingChip(
                                           icon: Icons.play_arrow_rounded,
                                           label: 'یوتیوب',
