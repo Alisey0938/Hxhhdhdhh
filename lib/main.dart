@@ -1630,7 +1630,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     });
   }
 
-  // سیستم تست پینگ دقیق و صحیح برای پینگ کل و شبکه‌های اجتماعی
+  // سیستم تست پینگ همزمان (Concurrent) برای جلوگیری از تایم‌اوت و خطای -1 شبکه‌های اجتماعی
   Future<void> _testServerDelay(dynamic item) async {
     if (item is! Map) return;
 
@@ -1656,53 +1656,29 @@ class _ServerListScreenState extends State<ServerListScreen>
     try {
       final configJson = _parseConfigToJson(rawUrl);
 
-      // 1. پینگ کل (General) - استفاده از generate_204 برای تست اتصال پایدار و دقیق بدون خطای فیلترینگ گوگل
-      final delayGeneral = await flutterV2ray
-          .getServerDelay(config: configJson, url: 'https://www.gstatic.com/generate_204')
-          .timeout(const Duration(seconds: 10), onTimeout: () => -1);
+      // اجرای همزمان (موازی) تمام تست‌های پینگ با Future.wait برای جلوگیری از ازدحام پورت لوکال و تایم‌اوت
+      final results = await Future.wait([
+        flutterV2ray.getServerDelay(config: configJson, url: 'https://www.gstatic.com/generate_204').timeout(const Duration(seconds: 8), onTimeout: () => -1),
+        flutterV2ray.getServerDelay(config: configJson, url: 'https://t.me').timeout(const Duration(seconds: 8), onTimeout: () => -1),
+        flutterV2ray.getServerDelay(config: configJson, url: 'https://www.instagram.com').timeout(const Duration(seconds: 8), onTimeout: () => -1),
+        flutterV2ray.getServerDelay(config: configJson, url: 'https://www.youtube.com').timeout(const Duration(seconds: 8), onTimeout: () => -1),
+      ]);
 
-      if (mounted) {
-        setState(() {
-          _pings[configId] = delayGeneral > 0 ? delayGeneral : -1;
-          _pingLoading[configId] = false;
-        });
-      }
+      if (!mounted) return;
 
-      // 2. پینگ دقیق تلگرام (api.telegram.org)
-      final delayTelegram = await flutterV2ray
-          .getServerDelay(config: configJson, url: 'https://api.telegram.org')
-          .timeout(const Duration(seconds: 10), onTimeout: () => -1);
+      setState(() {
+        _pings[configId] = results[0] > 0 ? results[0] : -1;
+        _pingLoading[configId] = false;
 
-      if (mounted) {
-        setState(() {
-          _telegramPings[configId] = delayTelegram > 0 ? delayTelegram : -1;
-          _telegramPingLoading[configId] = false;
-        });
-      }
+        _telegramPings[configId] = results[1] > 0 ? results[1] : -1;
+        _telegramPingLoading[configId] = false;
 
-      // 3. پینگ دقیق اینستاگرام (instagram.com)
-      final delayInstagram = await flutterV2ray
-          .getServerDelay(config: configJson, url: 'https://www.instagram.com')
-          .timeout(const Duration(seconds: 10), onTimeout: () => -1);
+        _instagramPings[configId] = results[2] > 0 ? results[2] : -1;
+        _instagramPingLoading[configId] = false;
 
-      if (mounted) {
-        setState(() {
-          _instagramPings[configId] = delayInstagram > 0 ? delayInstagram : -1;
-          _instagramPingLoading[configId] = false;
-        });
-      }
-
-      // 4. پینگ دقیق یوتیوب (youtube.com)
-      final delayYoutube = await flutterV2ray
-          .getServerDelay(config: configJson, url: 'https://www.youtube.com')
-          .timeout(const Duration(seconds: 10), onTimeout: () => -1);
-
-      if (mounted) {
-        setState(() {
-          _youtubePings[configId] = delayYoutube > 0 ? delayYoutube : -1;
-          _youtubePingLoading[configId] = false;
-        });
-      }
+        _youtubePings[configId] = results[3] > 0 ? results[3] : -1;
+        _youtubePingLoading[configId] = false;
+      });
     } catch (e) {
       debugPrint('Ping failed for $configId: $e');
       if (mounted) {
