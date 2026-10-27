@@ -404,6 +404,35 @@ class _ServerListScreenState extends State<ServerListScreen>
   final Map<String, int> _pings = {};
   final Map<String, bool> _pingLoading = {};
 
+  // These checks run against each saved configuration via the plugin's
+  // per-config outbound-delay API, not through the currently active VPN.
+  static const List<Map<String, Object>> _socialTargets = [
+    {
+      'id': 'telegram',
+      'label': 'Telegram',
+      'url': 'https://telegram.org/',
+      'icon': Icons.send,
+      'color': Color(0xFF29A9EB),
+    },
+    {
+      'id': 'instagram',
+      'label': 'Instagram',
+      'url': 'https://www.instagram.com/',
+      'icon': Icons.camera_alt_outlined,
+      'color': Color(0xFFE879A8),
+    },
+    {
+      'id': 'youtube',
+      'label': 'YouTube',
+      'url': 'https://www.youtube.com/generate_204',
+      'icon': Icons.play_circle_outline,
+      'color': Color(0xFFFF5252),
+    },
+  ];
+
+  final Map<String, Map<String, int>> _socialPings = {};
+  final Map<String, Set<String>> _socialPingLoading = {};
+
   bool _isLoading = true;
   bool _isTestingAllPings = false;
   bool _isConnectingProcess = false;
@@ -1656,6 +1685,47 @@ class _ServerListScreenState extends State<ServerListScreen>
     });
   }
 
+  Future<void> _testSocialTarget(
+    dynamic item,
+    Map<String, Object> target,
+  ) async {
+    if (item is! Map) return;
+
+    final rawUrl = (item['config'] ?? '').toString().trim();
+    final configId = _configId(item);
+    final targetId = target['id'] as String;
+
+    if (rawUrl.isEmpty || configId.isEmpty) return;
+
+    if (mounted) {
+      setState(() {
+        _socialPingLoading.putIfAbsent(configId, () => <String>{})
+            .add(targetId);
+      });
+    }
+
+    var delay = -1;
+    try {
+      final configJson = _parseConfigToJson(rawUrl);
+      delay = await flutterV2ray
+          .getServerDelay(
+            config: configJson,
+            url: target['url'] as String,
+          )
+          .timeout(const Duration(seconds: 20));
+    } catch (e) {
+      debugPrint('Social target ping failed for $configId/$targetId: $e');
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _socialPings.putIfAbsent(configId, () => <String, int>{})[targetId] =
+          delay > 0 ? delay : -1;
+      _socialPingLoading[configId]?.remove(targetId);
+    });
+  }
+
   Future<void> _toggleMainConnection() async {
     if (_isConnectingProcess) return;
 
@@ -2109,18 +2179,93 @@ class _ServerListScreenState extends State<ServerListScreen>
                                     Expanded(
                                       child: Padding(
                                         padding: const EdgeInsets.symmetric(
-                                          vertical: 14,
+                                          vertical: 10,
                                         ),
-                                        child: Text(
-                                          (item['name'] ?? 'سرور Xray')
-                                              .toString(),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              (item['name'] ?? 'سرور Xray')
+                                                  .toString(),
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 7),
+                                            Wrap(
+                                              spacing: 10,
+                                              runSpacing: 5,
+                                              children: _socialTargets.map((target) {
+                                                final targetId =
+                                                    target['id'] as String;
+                                                final targetPing =
+                                                    _socialPings[configId]?[targetId] ??
+                                                        -1;
+                                                final targetLoading =
+                                                    _socialPingLoading[configId]
+                                                            ?.contains(targetId) ??
+                                                        false;
+                                                final targetColor =
+                                                    target['color'] as Color;
+                                                return Tooltip(
+                                                  message:
+                                                      '${target['label']} — برای تست پینگ لمس کنید',
+                                                  child: InkWell(
+                                                    borderRadius:
+                                                        BorderRadius.circular(6),
+                                                    onTap: () => _testSocialTarget(
+                                                      item,
+                                                      target,
+                                                    ),
+                                                    child: Padding(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                        vertical: 2,
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        children: [
+                                                          Icon(
+                                                            target['icon']
+                                                                as IconData,
+                                                            size: 15,
+                                                            color: targetColor,
+                                                          ),
+                                                          const SizedBox(width: 3),
+                                                          Text(
+                                                            targetLoading
+                                                                ? '...'
+                                                                : targetPing > 0
+                                                                    ? '${targetPing}ms'
+                                                                    : '—',
+                                                            style: TextStyle(
+                                                              color: targetLoading
+                                                                  ? Colors.white38
+                                                                  : targetPing > 0
+                                                                      ? const Color(
+                                                                          0xFF81C784)
+                                                                      : Colors.white54,
+                                                              fontSize: 10,
+                                                              fontWeight:
+                                                                  FontWeight.w600,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+                                              }).toList(),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ),
