@@ -121,7 +121,6 @@ class _LoginScreenState extends State<LoginScreen> {
             : [];
       });
     } catch (_) {
-      // Login must remain available even if announcements cannot be loaded.
     } finally {
       if (mounted) setState(() => _isLoadingLoginAnnouncements = false);
     }
@@ -401,37 +400,19 @@ class _ServerListScreenState extends State<ServerListScreen>
 
   List<dynamic> _configs = [];
 
+  // پینگ کلی (General)
   final Map<String, int> _pings = {};
   final Map<String, bool> _pingLoading = {};
 
-  // These checks run against each saved configuration via the plugin's
-  // per-config outbound-delay API, not through the currently active VPN.
-  static const List<Map<String, Object>> _socialTargets = [
-    {
-      'id': 'telegram',
-      'label': 'Telegram',
-      'url': 'https://telegram.org/',
-      'icon': Icons.send,
-      'color': Color(0xFF29A9EB),
-    },
-    {
-      'id': 'instagram',
-      'label': 'Instagram',
-      'url': 'https://www.instagram.com/',
-      'icon': Icons.camera_alt_outlined,
-      'color': Color(0xFFE879A8),
-    },
-    {
-      'id': 'youtube',
-      'label': 'YouTube',
-      'url': 'https://www.youtube.com/generate_204',
-      'icon': Icons.play_circle_outline,
-      'color': Color(0xFFFF5252),
-    },
-  ];
+  // پینگ اختصاصی شبکه‌های اجتماعی
+  final Map<String, int> _telegramPings = {};
+  final Map<String, bool> _telegramPingLoading = {};
 
-  final Map<String, Map<String, int>> _socialPings = {};
-  final Map<String, Set<String>> _socialPingLoading = {};
+  final Map<String, int> _instagramPings = {};
+  final Map<String, bool> _instagramPingLoading = {};
+
+  final Map<String, int> _youtubePings = {};
+  final Map<String, bool> _youtubePingLoading = {};
 
   bool _isLoading = true;
   bool _isTestingAllPings = false;
@@ -1108,7 +1089,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
   }
 
-  // تنظیمات بیس کانفیگ به همراه قوانین Routing جهت دور زدن تونل برای پنل مدیریت (هاست ایران)
   Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
     if (outbound is Map && !outbound.containsKey('tag')) {
       outbound['tag'] = 'proxy';
@@ -1152,9 +1132,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     };
   }
 
-  // Ensure API calls to the Iranian hosting panel bypass the proxy tunnel.
-  // Xray routing is hostname-based (not URL-path-based), so this applies to
-  // the whole socialmedia-ad.ir host, including /index.php.
   Map<String, dynamic> _applyApiDirectRouting(Map<String, dynamic> source) {
     final config = Map<String, dynamic>.from(source);
 
@@ -1198,7 +1175,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
     config['outbounds'] = outbounds;
 
-    // Domain routing for HTTPS needs TLS/HTTP sniffing on the inbound.
     final rawInbounds = config['inbounds'];
     if (rawInbounds is List) {
       config['inbounds'] = rawInbounds.whereType<Map>().map((item) {
@@ -1232,8 +1208,6 @@ class _ServerListScreenState extends State<ServerListScreen>
             .toList()
         : <Map<String, dynamic>>[];
 
-    // Remove only our own exact-host rule before reinserting it first,
-    // ensuring existing catch-all/proxy rules cannot shadow the bypass.
     rules.removeWhere((rule) {
       final domains = rule['domain'];
       return rule['type'] == 'field' &&
@@ -1626,6 +1600,12 @@ class _ServerListScreenState extends State<ServerListScreen>
           if (id.isNotEmpty) {
             _pingLoading[id] = true;
             _pings[id] = -1;
+            _telegramPingLoading[id] = true;
+            _telegramPings[id] = -1;
+            _instagramPingLoading[id] = true;
+            _instagramPings[id] = -1;
+            _youtubePingLoading[id] = true;
+            _youtubePings[id] = -1;
           }
         }
       });
@@ -1650,6 +1630,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     });
   }
 
+  // تست پینگ عمومی و اختصاصی هر کانفیگ (به تفکیک تلگرام، اینستاگرام و یوتیوب)
   Future<void> _testServerDelay(dynamic item) async {
     if (item is! Map) return;
 
@@ -1661,69 +1642,82 @@ class _ServerListScreenState extends State<ServerListScreen>
         setState(() {
           _pings[configId] = -1;
           _pingLoading[configId] = false;
+          _telegramPings[configId] = -1;
+          _telegramPingLoading[configId] = false;
+          _instagramPings[configId] = -1;
+          _instagramPingLoading[configId] = false;
+          _youtubePings[configId] = -1;
+          _youtubePingLoading[configId] = false;
         });
       }
       return;
     }
 
-    var delay = -1;
-
     try {
       final configJson = _parseConfigToJson(rawUrl);
-      delay = await flutterV2ray
-          .getServerDelay(config: configJson)
-          .timeout(const Duration(seconds: 20));
+
+      // 1. General Ping (Google)
+      final delayGeneral = await flutterV2ray
+          .getServerDelay(config: configJson, url: 'https://www.google.com')
+          .timeout(const Duration(seconds: 15), onTimeout: () => -1);
+
+      if (mounted) {
+        setState(() {
+          _pings[configId] = delayGeneral > 0 ? delayGeneral : -1;
+          _pingLoading[configId] = false;
+        });
+      }
+
+      // 2. Telegram Ping (t.me)
+      final delayTelegram = await flutterV2ray
+          .getServerDelay(config: configJson, url: 'https://t.me')
+          .timeout(const Duration(seconds: 15), onTimeout: () => -1);
+
+      if (mounted) {
+        setState(() {
+          _telegramPings[configId] = delayTelegram > 0 ? delayTelegram : -1;
+          _telegramPingLoading[configId] = false;
+        });
+      }
+
+      // 3. Instagram Ping (instagram.com)
+      final delayInstagram = await flutterV2ray
+          .getServerDelay(config: configJson, url: 'https://www.instagram.com')
+          .timeout(const Duration(seconds: 15), onTimeout: () => -1);
+
+      if (mounted) {
+        setState(() {
+          _instagramPings[configId] = delayInstagram > 0 ? delayInstagram : -1;
+          _instagramPingLoading[configId] = false;
+        });
+      }
+
+      // 4. YouTube Ping (youtube.com)
+      final delayYoutube = await flutterV2ray
+          .getServerDelay(config: configJson, url: 'https://www.youtube.com')
+          .timeout(const Duration(seconds: 15), onTimeout: () => -1);
+
+      if (mounted) {
+        setState(() {
+          _youtubePings[configId] = delayYoutube > 0 ? delayYoutube : -1;
+          _youtubePingLoading[configId] = false;
+        });
+      }
     } catch (e) {
       debugPrint('Ping failed for $configId: $e');
+      if (mounted) {
+        setState(() {
+          _pings[configId] = -1;
+          _pingLoading[configId] = false;
+          _telegramPings[configId] = -1;
+          _telegramPingLoading[configId] = false;
+          _instagramPings[configId] = -1;
+          _instagramPingLoading[configId] = false;
+          _youtubePings[configId] = -1;
+          _youtubePingLoading[configId] = false;
+        });
+      }
     }
-
-    if (!mounted) return;
-
-    setState(() {
-      _pings[configId] = delay > 0 ? delay : -1;
-      _pingLoading[configId] = false;
-    });
-  }
-
-  Future<void> _testSocialTarget(
-    dynamic item,
-    Map<String, Object> target,
-  ) async {
-    if (item is! Map) return;
-
-    final rawUrl = (item['config'] ?? '').toString().trim();
-    final configId = _configId(item);
-    final targetId = target['id'] as String;
-
-    if (rawUrl.isEmpty || configId.isEmpty) return;
-
-    if (mounted) {
-      setState(() {
-        _socialPingLoading.putIfAbsent(configId, () => <String>{})
-            .add(targetId);
-      });
-    }
-
-    var delay = -1;
-    try {
-      final configJson = _parseConfigToJson(rawUrl);
-      delay = await flutterV2ray
-          .getServerDelay(
-            config: configJson,
-            url: target['url'] as String,
-          )
-          .timeout(const Duration(seconds: 20));
-    } catch (e) {
-      debugPrint('Social target ping failed for $configId/$targetId: $e');
-    }
-
-    if (!mounted) return;
-
-    setState(() {
-      _socialPings.putIfAbsent(configId, () => <String, int>{})[targetId] =
-          delay > 0 ? delay : -1;
-      _socialPingLoading[configId]?.remove(targetId);
-    });
   }
 
   Future<void> _toggleMainConnection() async {
@@ -1795,27 +1789,9 @@ class _ServerListScreenState extends State<ServerListScreen>
 
       final configJson = _parseConfigToJson(rawUrl);
 
-      // Use the name from the admin panel/app list for the Android VPN
-      // foreground notification. The URL's #remark may still contain the
-      // old name after an admin renames a config, so do not override this
-      // value with V2ray.parseFromURL(...).remark.
       final remark = (selectedConfig['name'] ?? 'Xray Server').toString().trim().isNotEmpty
           ? (selectedConfig['name'] ?? 'Xray Server').toString().trim()
           : 'Xray Server';
-
-      debugPrint('V2Ray: starting profile="$remark"');
-      final debugUri = Uri.tryParse(_cleanUrl(rawUrl));
-      final debugNetwork = debugUri == null
-          ? ''
-          : _firstQueryValue(
-              _rawQueryParametersPreservePlus(debugUri),
-              const ['type', 'network'],
-            );
-      debugPrint(
-        'V2Ray: parsed scheme=${debugUri?.scheme}, '
-        'host=${debugUri?.host}, port=${debugUri?.port}, '
-        'network=$debugNetwork',
-      );
 
       await flutterV2ray.startV2Ray(
         remark: remark,
@@ -1826,40 +1802,10 @@ class _ServerListScreenState extends State<ServerListScreen>
       await Future<void>.delayed(const Duration(seconds: 4));
       if (!mounted || _userWantsDisconnect) return;
 
-      if (!_isConnected) {
-        setState(() => _isConnectingProcess = false);
-        debugPrint('V2Ray: no CONNECTED status after 4 seconds; collecting core logs.');
-        try {
-          final logs = await flutterV2ray.getLogs();
-          for (final line in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
-            debugPrint('[XRAY_CORE] $line');
-          }
-        } catch (logError) {
-          debugPrint('V2Ray: unable to read core logs: $logError');
-        }
-
-        if (mounted && !_isConnected) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('هسته اتصال را تأیید نکرد. لاگ‌های [XRAY_CORE] را از Debug Console بررسی کنید.'),
-              duration: Duration(seconds: 6),
-            ),
-          );
-        }
-      } else {
-        setState(() => _isConnectingProcess = false);
-      }
+      setState(() => _isConnectingProcess = false);
     } catch (e, stackTrace) {
       debugPrint('V2Ray start failed: $e');
       debugPrint('$stackTrace');
-      try {
-        final logs = await flutterV2ray.getLogs();
-        for (final line in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
-          debugPrint('[XRAY_CORE] $line');
-        }
-      } catch (logError) {
-        debugPrint('V2Ray: unable to read core logs: $logError');
-      }
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1926,8 +1872,6 @@ class _ServerListScreenState extends State<ServerListScreen>
                   } catch (_) {}
                 },
           child: Container(
-            // Match the horizontal width and alignment of the config cards
-            // (ListView horizontal padding: 12 and card bottom margin: 10).
             width: double.infinity,
             margin: const EdgeInsets.only(
               left: 12,
@@ -2009,6 +1953,52 @@ class _ServerListScreenState extends State<ServerListScreen>
           ),
         );
       }).toList(),
+    );
+  }
+
+  // ویجت نمایش پینگ اختصاصی شبکه‌های اجتماعی
+  Widget _buildSocialPingChip({
+    required IconData icon,
+    required String label,
+    required int ping,
+    required bool isLoading,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1B1E2B),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70, fontSize: 10),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            isLoading
+                ? '...'
+                : ping > 0
+                    ? '${ping}ms'
+                    : '-1ms',
+            style: TextStyle(
+              color: isLoading
+                  ? Colors.white54
+                  : ping > 0
+                      ? const Color(0xFF81C784)
+                      : const Color(0xFFE57373),
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2150,158 +2140,113 @@ class _ServerListScreenState extends State<ServerListScreen>
                                       )
                                     : null,
                               ),
-                              child: IntrinsicHeight(
-                                child: Row(
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Container(
-                                      width: 26,
-                                      decoration: const BoxDecoration(
-                                        color: Colors.black26,
-                                        borderRadius: BorderRadius.only(
-                                          topLeft: Radius.circular(12),
-                                          bottomLeft: Radius.circular(12),
-                                        ),
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: RotatedBox(
-                                        quarterTurns: 3,
-                                        child: Text(
-                                          protocol,
-                                          style: const TextStyle(
-                                            color: Colors.white38,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
+                                    // ردیف اول: پروتکل، نام سرور و پینگ کلی
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black26,
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            protocol,
+                                            style: const TextStyle(
+                                              color: Colors.white54,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 10,
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Text(
-                                              (item['name'] ?? 'سرور Xray')
-                                                  .toString(),
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 15,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            (item['name'] ?? 'سرور Xray')
+                                                .toString(),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w500,
                                             ),
-                                            const SizedBox(height: 7),
-                                            Wrap(
-                                              spacing: 10,
-                                              runSpacing: 5,
-                                              children: _socialTargets.map((target) {
-                                                final targetId =
-                                                    target['id'] as String;
-                                                final targetPing =
-                                                    _socialPings[configId]?[targetId] ??
-                                                        -1;
-                                                final targetLoading =
-                                                    _socialPingLoading[configId]
-                                                            ?.contains(targetId) ??
-                                                        false;
-                                                final targetColor =
-                                                    target['color'] as Color;
-                                                return Tooltip(
-                                                  message:
-                                                      '${target['label']} — برای تست پینگ لمس کنید',
-                                                  child: InkWell(
-                                                    borderRadius:
-                                                        BorderRadius.circular(6),
-                                                    onTap: () => _testSocialTarget(
-                                                      item,
-                                                      target,
-                                                    ),
-                                                    child: Padding(
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                        vertical: 2,
-                                                      ),
-                                                      child: Row(
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        children: [
-                                                          Icon(
-                                                            target['icon']
-                                                                as IconData,
-                                                            size: 15,
-                                                            color: targetColor,
-                                                          ),
-                                                          const SizedBox(width: 3),
-                                                          Text(
-                                                            targetLoading
-                                                                ? '...'
-                                                                : targetPing > 0
-                                                                    ? '${targetPing}ms'
-                                                                    : '—',
-                                                            style: TextStyle(
-                                                              color: targetLoading
-                                                                  ? Colors.white38
-                                                                  : targetPing > 0
-                                                                      ? const Color(
-                                                                          0xFF81C784)
-                                                                      : Colors.white54,
-                                                              fontSize: 10,
-                                                              fontWeight:
-                                                                  FontWeight.w600,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                );
-                                              }).toList(),
-                                            ),
-                                          ],
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ),
-                                      ),
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.all(8),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: pingLoading
-                                              ? Colors.white10
-                                              : ping > 0
-                                                  ? const Color(0xFF2E5A3C)
-                                                  : const Color(0xFF613137),
-                                          borderRadius:
-                                              BorderRadius.circular(10),
-                                        ),
-                                        child: Text(
-                                          pingLoading
-                                              ? '...'
-                                              : ping > 0
-                                                  ? '${ping}ms'
-                                                  : '-1ms',
-                                          style: TextStyle(
+                                        const SizedBox(width: 8),
+                                        // پینگ کلی (General)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
                                             color: pingLoading
-                                                ? Colors.white54
+                                                ? Colors.white10
                                                 : ping > 0
-                                                    ? const Color(0xFF81C784)
-                                                    : const Color(0xFFE57373),
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
+                                                    ? const Color(0xFF2E5A3C)
+                                                    : const Color(0xFF613137),
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                          ),
+                                          child: Text(
+                                            pingLoading
+                                                ? '...'
+                                                : ping > 0
+                                                    ? 'کل: ${ping}ms'
+                                                    : 'کل: -1ms',
+                                            style: TextStyle(
+                                              color: pingLoading
+                                                  ? Colors.white54
+                                                  : ping > 0
+                                                      ? const Color(0xFF81C784)
+                                                      : const Color(0xFFE57373),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                            ),
                                           ),
                                         ),
-                                      ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    const Divider(color: Colors.white10, height: 1),
+                                    const SizedBox(height: 8),
+                                    // ردیف دوم: پینگ اختصاصی شبکه‌های اجتماعی (تلگرام، اینستاگرام، یوتیوب)
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        // تلگرام
+                                        _buildSocialPingChip(
+                                          icon: Icons.send_rounded,
+                                          label: 'تلگرام',
+                                          ping: _telegramPings[configId] ?? -1,
+                                          isLoading: _telegramPingLoading[configId] ?? false,
+                                          color: const Color(0xFF229ED9),
+                                        ),
+                                        // اینستاگرام
+                                        _buildSocialPingChip(
+                                          icon: Icons.camera_alt_rounded,
+                                          label: 'اینستا',
+                                          ping: _instagramPings[configId] ?? -1,
+                                          isLoading: _instagramPingLoading[configId] ?? false,
+                                          color: const Color(0xFFE1306C),
+                                        ),
+                                        // یوتیوب
+                                        _buildSocialPingChip(
+                                          icon: Icons.play_arrow_rounded,
+                                          label: 'یوتیوب',
+                                          ping: _youtubePings[configId] ?? -1,
+                                          isLoading: _youtubePingLoading[configId] ?? false,
+                                          color: const Color(0xFFFF0000),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
