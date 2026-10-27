@@ -1696,32 +1696,53 @@ class _ServerListScreenState extends State<ServerListScreen>
     final targetId = target['id'] as String;
 
     if (rawUrl.isEmpty || configId.isEmpty) return;
+    if (_socialPingLoading[configId]?.contains(targetId) ?? false) return;
 
-    if (mounted) {
-      setState(() {
-        _socialPingLoading.putIfAbsent(configId, () => <String>{})
-            .add(targetId);
-      });
-    }
+    setState(() {
+      _socialPingLoading.putIfAbsent(configId, () => <String>{})
+          .add(targetId);
+    });
 
-    var delay = -1;
+    // Measure three times through this exact saved config. Use the median to
+    // reduce transient spikes and require at least two valid samples.
+    final samples = <int>[];
     try {
       final configJson = _parseConfigToJson(rawUrl);
-      delay = await flutterV2ray
-          .getServerDelay(
-            config: configJson,
-            url: target['url'] as String,
-          )
-          .timeout(const Duration(seconds: 20));
+      for (var attempt = 0; attempt < 3; attempt++) {
+        try {
+          final sample = await flutterV2ray
+              .getServerDelay(
+                config: configJson,
+                url: target['url'] as String,
+              )
+              .timeout(const Duration(seconds: 12));
+          if (sample > 0) samples.add(sample);
+        } catch (e) {
+          debugPrint(
+            'Social target ping sample failed for $configId/$targetId '
+            '(attempt ${attempt + 1}): $e',
+          );
+        }
+      }
     } catch (e) {
       debugPrint('Social target ping failed for $configId/$targetId: $e');
     }
+
+    samples.sort();
+    final delay = samples.length >= 2
+        ? (samples.length.isOdd
+            ? samples[samples.length ~/ 2]
+            : ((samples[(samples.length ~/ 2) - 1] +
+                    samples[samples.length ~/ 2]) /
+                2)
+                .round())
+        : -1;
 
     if (!mounted) return;
 
     setState(() {
       _socialPings.putIfAbsent(configId, () => <String, int>{})[targetId] =
-          delay > 0 ? delay : -1;
+          delay;
       _socialPingLoading[configId]?.remove(targetId);
     });
   }
