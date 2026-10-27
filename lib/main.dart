@@ -121,6 +121,7 @@ class _LoginScreenState extends State<LoginScreen> {
             : [];
       });
     } catch (_) {
+      // Login must remain available even if announcements cannot be loaded.
     } finally {
       if (mounted) setState(() => _isLoadingLoginAnnouncements = false);
     }
@@ -400,19 +401,15 @@ class _ServerListScreenState extends State<ServerListScreen>
 
   List<dynamic> _configs = [];
 
-  // پینگ کلی (General)
   final Map<String, int> _pings = {};
   final Map<String, bool> _pingLoading = {};
-
-  // پینگ اختصاصی شبکه‌های اجتماعی
-  final Map<String, int> _telegramPings = {};
-  final Map<String, bool> _telegramPingLoading = {};
-
-  final Map<String, int> _instagramPings = {};
-  final Map<String, bool> _instagramPingLoading = {};
-
-  final Map<String, int> _youtubePings = {};
-  final Map<String, bool> _youtubePingLoading = {};
+  // Website response delay measured through each tested profile's outbound.
+  final Map<String, Map<String, int>> _socialPings = {};
+  static const Map<String, String> _socialProbeUrls = {
+    'TG': 'https://telegram.org/',
+    'IG': 'https://www.instagram.com/',
+    'YT': 'https://www.youtube.com/generate_204',
+  };
 
   bool _isLoading = true;
   bool _isTestingAllPings = false;
@@ -1089,6 +1086,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
   }
 
+  // تنظیمات بیس کانفیگ به همراه قوانین Routing جهت دور زدن تونل برای پنل مدیریت (هاست ایران)
   Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
     if (outbound is Map && !outbound.containsKey('tag')) {
       outbound['tag'] = 'proxy';
@@ -1132,6 +1130,9 @@ class _ServerListScreenState extends State<ServerListScreen>
     };
   }
 
+  // Ensure API calls to the Iranian hosting panel bypass the proxy tunnel.
+  // Xray routing is hostname-based (not URL-path-based), so this applies to
+  // the whole socialmedia-ad.ir host, including /index.php.
   Map<String, dynamic> _applyApiDirectRouting(Map<String, dynamic> source) {
     final config = Map<String, dynamic>.from(source);
 
@@ -1175,6 +1176,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
     config['outbounds'] = outbounds;
 
+    // Domain routing for HTTPS needs TLS/HTTP sniffing on the inbound.
     final rawInbounds = config['inbounds'];
     if (rawInbounds is List) {
       config['inbounds'] = rawInbounds.whereType<Map>().map((item) {
@@ -1208,6 +1210,8 @@ class _ServerListScreenState extends State<ServerListScreen>
             .toList()
         : <Map<String, dynamic>>[];
 
+    // Remove only our own exact-host rule before reinserting it first,
+    // ensuring existing catch-all/proxy rules cannot shadow the bypass.
     rules.removeWhere((rule) {
       final domains = rule['domain'];
       return rule['type'] == 'field' &&
@@ -1600,18 +1604,18 @@ class _ServerListScreenState extends State<ServerListScreen>
           if (id.isNotEmpty) {
             _pingLoading[id] = true;
             _pings[id] = -1;
-            _telegramPingLoading[id] = true;
-            _telegramPings[id] = -1;
-            _instagramPingLoading[id] = true;
-            _instagramPings[id] = -1;
-            _youtubePingLoading[id] = true;
-            _youtubePings[id] = -1;
+            _socialPings[id] = {for (final key in _socialProbeUrls.keys) key: -1};
           }
         }
       });
     }
 
-    await Future.wait(_configs.map(_testServerDelay));
+    // The plugin's temporary outbound test listener can collide when several
+    // configurations are tested simultaneously. Test saved configurations in
+    // sequence so every result is attributed to the correct profile.
+    for (final item in List<dynamic>.from(_configs)) {
+      await _testServerDelay(item);
+    }
 
     if (!mounted) return;
 
@@ -1630,68 +1634,102 @@ class _ServerListScreenState extends State<ServerListScreen>
     });
   }
 
-  // سیستم تست پینگ همزمان (Concurrent) برای جلوگیری از تایم‌اوت و خطای -1 شبکه‌های اجتماعی
   Future<void> _testServerDelay(dynamic item) async {
     if (item is! Map) return;
 
     final rawUrl = (item['config'] ?? '').toString().trim();
     final configId = _configId(item);
-
     if (rawUrl.isEmpty || configId.isEmpty) {
       if (mounted && configId.isNotEmpty) {
         setState(() {
           _pings[configId] = -1;
           _pingLoading[configId] = false;
-          _telegramPings[configId] = -1;
-          _telegramPingLoading[configId] = false;
-          _instagramPings[configId] = -1;
-          _instagramPingLoading[configId] = false;
-          _youtubePings[configId] = -1;
-          _youtubePingLoading[configId] = false;
+          _socialPings[configId] = {
+            for (final key in _socialProbeUrls.keys) key: -1,
+          };
         });
       }
       return;
     }
 
+    if (mounted) {
+      setState(() {
+        _pingLoading[configId] = true;
+        _pings[configId] = -1;
+        _socialPings[configId] = {
+          for (final key in _socialProbeUrls.keys) key: -1,
+        };
+      });
+    }
+
+    // These are outbound HTTP/TLS response-delay checks through the supplied
+    // V2Ray profile, not ICMP ping. Repeat each target and use the median to
+    // reduce one-off spikes. Probes are deliberately sequential because the
+    // plugin may use a temporary local listener for each delay test.
+    final targets = <String, String>{
+      'SERVER': 'https://www.gstatic.com/generate_204',
+      ..._socialProbeUrls,
+    };
+    final results = <String, int>{};
+
     try {
       final configJson = _parseConfigToJson(rawUrl);
+      for (final entry in targets.entries) {
+        final samples = <int>[];
+        for (var attempt = 0; attempt < 3; attempt++) {
+          try {
+            final value = await flutterV2ray
+                .getServerDelay(config: configJson, url: entry.value)
+                .timeout(
+                  const Duration(seconds: 8),
+                  onTimeout: () => -1,
+                );
+            if (value > 0) samples.add(value);
+          } catch (e) {
+            debugPrint(
+              'Ping sample failed for $configId/${entry.key} '
+              '(attempt ${attempt + 1}): $e',
+            );
+          }
+        }
 
-      // اجرای همزمان (موازی) تمام تست‌های پینگ با Future.wait برای جلوگیری از ازدحام پورت لوکال و تایم‌اوت
-      final results = await Future.wait([
-        flutterV2ray.getServerDelay(config: configJson, url: 'https://www.gstatic.com/generate_204').timeout(const Duration(seconds: 8), onTimeout: () => -1),
-        flutterV2ray.getServerDelay(config: configJson, url: 'https://t.me').timeout(const Duration(seconds: 8), onTimeout: () => -1),
-        flutterV2ray.getServerDelay(config: configJson, url: 'https://www.instagram.com').timeout(const Duration(seconds: 8), onTimeout: () => -1),
-        flutterV2ray.getServerDelay(config: configJson, url: 'https://www.youtube.com').timeout(const Duration(seconds: 8), onTimeout: () => -1),
-      ]);
+        samples.sort();
+        // Require at least two valid samples. For three samples, this is the
+        // middle value; for two, average the two valid readings.
+        if (samples.length >= 2) {
+          results[entry.key] = samples.length.isOdd
+              ? samples[samples.length ~/ 2]
+              : ((samples[(samples.length ~/ 2) - 1] +
+                          samples[samples.length ~/ 2]) /
+                      2)
+                  .round();
+        } else {
+          results[entry.key] = -1;
+        }
 
-      if (!mounted) return;
-
-      setState(() {
-        _pings[configId] = results[0] > 0 ? results[0] : -1;
-        _pingLoading[configId] = false;
-
-        _telegramPings[configId] = results[1] > 0 ? results[1] : -1;
-        _telegramPingLoading[configId] = false;
-
-        _instagramPings[configId] = results[2] > 0 ? results[2] : -1;
-        _instagramPingLoading[configId] = false;
-
-        _youtubePings[configId] = results[3] > 0 ? results[3] : -1;
-        _youtubePingLoading[configId] = false;
-      });
+        if (!mounted) return;
+        setState(() {
+          if (entry.key == 'SERVER') {
+            _pings[configId] = results[entry.key] ?? -1;
+          } else {
+            _socialPings.putIfAbsent(configId, () => {});
+            _socialPings[configId]![entry.key] = results[entry.key] ?? -1;
+          }
+        });
+      }
     } catch (e) {
       debugPrint('Ping failed for $configId: $e');
       if (mounted) {
         setState(() {
           _pings[configId] = -1;
-          _pingLoading[configId] = false;
-          _telegramPings[configId] = -1;
-          _telegramPingLoading[configId] = false;
-          _instagramPings[configId] = -1;
-          _instagramPingLoading[configId] = false;
-          _youtubePings[configId] = -1;
-          _youtubePingLoading[configId] = false;
+          _socialPings[configId] = {
+            for (final key in _socialProbeUrls.keys) key: -1,
+          };
         });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _pingLoading[configId] = false);
       }
     }
   }
@@ -1765,9 +1803,27 @@ class _ServerListScreenState extends State<ServerListScreen>
 
       final configJson = _parseConfigToJson(rawUrl);
 
+      // Use the name from the admin panel/app list for the Android VPN
+      // foreground notification. The URL's #remark may still contain the
+      // old name after an admin renames a config, so do not override this
+      // value with V2ray.parseFromURL(...).remark.
       final remark = (selectedConfig['name'] ?? 'Xray Server').toString().trim().isNotEmpty
           ? (selectedConfig['name'] ?? 'Xray Server').toString().trim()
           : 'Xray Server';
+
+      debugPrint('V2Ray: starting profile="$remark"');
+      final debugUri = Uri.tryParse(_cleanUrl(rawUrl));
+      final debugNetwork = debugUri == null
+          ? ''
+          : _firstQueryValue(
+              _rawQueryParametersPreservePlus(debugUri),
+              const ['type', 'network'],
+            );
+      debugPrint(
+        'V2Ray: parsed scheme=${debugUri?.scheme}, '
+        'host=${debugUri?.host}, port=${debugUri?.port}, '
+        'network=$debugNetwork',
+      );
 
       await flutterV2ray.startV2Ray(
         remark: remark,
@@ -1778,10 +1834,40 @@ class _ServerListScreenState extends State<ServerListScreen>
       await Future<void>.delayed(const Duration(seconds: 4));
       if (!mounted || _userWantsDisconnect) return;
 
-      setState(() => _isConnectingProcess = false);
+      if (!_isConnected) {
+        setState(() => _isConnectingProcess = false);
+        debugPrint('V2Ray: no CONNECTED status after 4 seconds; collecting core logs.');
+        try {
+          final logs = await flutterV2ray.getLogs();
+          for (final line in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
+            debugPrint('[XRAY_CORE] $line');
+          }
+        } catch (logError) {
+          debugPrint('V2Ray: unable to read core logs: $logError');
+        }
+
+        if (mounted && !_isConnected) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('هسته اتصال را تأیید نکرد. لاگ‌های [XRAY_CORE] را از Debug Console بررسی کنید.'),
+              duration: Duration(seconds: 6),
+            ),
+          );
+        }
+      } else {
+        setState(() => _isConnectingProcess = false);
+      }
     } catch (e, stackTrace) {
       debugPrint('V2Ray start failed: $e');
       debugPrint('$stackTrace');
+      try {
+        final logs = await flutterV2ray.getLogs();
+        for (final line in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
+          debugPrint('[XRAY_CORE] $line');
+        }
+      } catch (logError) {
+        debugPrint('V2Ray: unable to read core logs: $logError');
+      }
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1848,6 +1934,8 @@ class _ServerListScreenState extends State<ServerListScreen>
                   } catch (_) {}
                 },
           child: Container(
+            // Match the horizontal width and alignment of the config cards
+            // (ListView horizontal padding: 12 and card bottom margin: 10).
             width: double.infinity,
             margin: const EdgeInsets.only(
               left: 12,
@@ -1929,51 +2017,6 @@ class _ServerListScreenState extends State<ServerListScreen>
           ),
         );
       }).toList(),
-    );
-  }
-
-  Widget _buildSocialPingChip({
-    required IconData icon,
-    required String label,
-    required int ping,
-    required bool isLoading,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1B1E2B),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white70, fontSize: 10),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            isLoading
-                ? '...'
-                : ping > 0
-                    ? '${ping}ms'
-                    : '-1ms',
-            style: TextStyle(
-              color: isLoading
-                  ? Colors.white54
-                  : ping > 0
-                      ? const Color(0xFF81C784)
-                      : const Color(0xFFE57373),
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -2082,6 +2125,7 @@ class _ServerListScreenState extends State<ServerListScreen>
                           final ping = _pings[configId] ?? -1;
                           final pingLoading =
                               _pingLoading[configId] ?? false;
+                          final socialPings = _socialPings[configId] ?? const <String, int>{};
 
                           return GestureDetector(
                             onTap: () {
@@ -2115,107 +2159,97 @@ class _ServerListScreenState extends State<ServerListScreen>
                                       )
                                     : null,
                               ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                              child: IntrinsicHeight(
+                                child: Row(
                                   children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 6,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.black26,
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                          child: Text(
-                                            protocol,
-                                            style: const TextStyle(
-                                              color: Colors.white54,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                            ),
+                                    Container(
+                                      width: 26,
+                                      decoration: const BoxDecoration(
+                                        color: Colors.black26,
+                                        borderRadius: BorderRadius.only(
+                                          topLeft: Radius.circular(12),
+                                          bottomLeft: Radius.circular(12),
+                                        ),
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: RotatedBox(
+                                        quarterTurns: 3,
+                                        child: Text(
+                                          protocol,
+                                          style: const TextStyle(
+                                            color: Colors.white38,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
                                           ),
                                         ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: Text(
-                                            (item['name'] ?? 'سرور Xray')
-                                                .toString(),
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: pingLoading
-                                                ? Colors.white10
-                                                : ping > 0
-                                                    ? const Color(0xFF2E5A3C)
-                                                    : const Color(0xFF613137),
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                          ),
-                                          child: Text(
-                                            pingLoading
-                                                ? '...'
-                                                : ping > 0
-                                                    ? 'کل: ${ping}ms'
-                                                    : 'کل: -1ms',
-                                            style: TextStyle(
-                                              color: pingLoading
-                                                  ? Colors.white54
-                                                  : ping > 0
-                                                      ? const Color(0xFF81C784)
-                                                      : const Color(0xFFE57373),
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                      ),
                                     ),
-                                    const SizedBox(height: 10),
-                                    const Divider(color: Colors.white10, height: 1),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        _buildSocialPingChip(
-                                          icon: Icons.send_rounded,
-                                          label: 'تلگرام',
-                                          ping: _telegramPings[configId] ?? -1,
-                                          isLoading: _telegramPingLoading[configId] ?? false,
-                                          color: const Color(0xFF229ED9),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 14,
                                         ),
-                                        _buildSocialPingChip(
-                                          icon: Icons.camera_alt_rounded,
-                                          label: 'اینستا',
-                                          ping: _instagramPings[configId] ?? -1,
-                                          isLoading: _instagramPingLoading[configId] ?? false,
-                                          color: const Color(0xFFE1306C),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              (item['name'] ?? 'سرور Xray').toString(),
+                                              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 5),
+                                            Wrap(
+                                              spacing: 5,
+                                              runSpacing: 3,
+                                              children: _socialProbeUrls.keys.map((key) {
+                                                final ms = socialPings[key] ?? -1;
+                                                return Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                  decoration: BoxDecoration(color: ms > 0 ? const Color(0x222EBA68) : Colors.white10, borderRadius: BorderRadius.circular(5)),
+                                                  child: Text('$key ${pingLoading && ms < 1 ? '…' : ms > 0 ? '${ms}ms' : '—'}', style: TextStyle(color: ms > 0 ? const Color(0xFF81C784) : Colors.white54, fontSize: 9, fontWeight: FontWeight.w600)),
+                                                );
+                                              }).toList(),
+                                            ),
+                                          ],
                                         ),
-                                        _buildSocialPingChip(
-                                          icon: Icons.play_arrow_rounded,
-                                          label: 'یوتیوب',
-                                          ping: _youtubePings[configId] ?? -1,
-                                          isLoading: _youtubePingLoading[configId] ?? false,
-                                          color: const Color(0xFFFF0000),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.all(8),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
                                         ),
-                                      ],
+                                        decoration: BoxDecoration(
+                                          color: pingLoading
+                                              ? Colors.white10
+                                              : ping > 0
+                                                  ? const Color(0xFF2E5A3C)
+                                                  : const Color(0xFF613137),
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          pingLoading
+                                              ? '...'
+                                              : ping > 0
+                                                  ? '${ping}ms'
+                                                  : '-1ms',
+                                          style: TextStyle(
+                                            color: pingLoading
+                                                ? Colors.white54
+                                                : ping > 0
+                                                    ? const Color(0xFF81C784)
+                                                    : const Color(0xFFE57373),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ],
                                 ),
