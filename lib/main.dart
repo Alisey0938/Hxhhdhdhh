@@ -403,13 +403,6 @@ class _ServerListScreenState extends State<ServerListScreen>
 
   final Map<String, int> _pings = {};
   final Map<String, bool> _pingLoading = {};
-  // Website response delay measured through each tested profile's outbound.
-  final Map<String, Map<String, int>> _socialPings = {};
-  static const Map<String, String> _socialProbeUrls = {
-    'TG': 'https://telegram.org/',
-    'IG': 'https://www.instagram.com/',
-    'YT': 'https://www.youtube.com/generate_204',
-  };
 
   bool _isLoading = true;
   bool _isTestingAllPings = false;
@@ -1604,18 +1597,12 @@ class _ServerListScreenState extends State<ServerListScreen>
           if (id.isNotEmpty) {
             _pingLoading[id] = true;
             _pings[id] = -1;
-            _socialPings[id] = {for (final key in _socialProbeUrls.keys) key: -1};
           }
         }
       });
     }
 
-    // The plugin's temporary outbound test listener can collide when several
-    // configurations are tested simultaneously. Test saved configurations in
-    // sequence so every result is attributed to the correct profile.
-    for (final item in List<dynamic>.from(_configs)) {
-      await _testServerDelay(item);
-    }
+    await Future.wait(_configs.map(_testServerDelay));
 
     if (!mounted) return;
 
@@ -1639,99 +1626,34 @@ class _ServerListScreenState extends State<ServerListScreen>
 
     final rawUrl = (item['config'] ?? '').toString().trim();
     final configId = _configId(item);
+
     if (rawUrl.isEmpty || configId.isEmpty) {
       if (mounted && configId.isNotEmpty) {
         setState(() {
           _pings[configId] = -1;
           _pingLoading[configId] = false;
-          _socialPings[configId] = {
-            for (final key in _socialProbeUrls.keys) key: -1,
-          };
         });
       }
       return;
     }
 
-    if (mounted) {
-      setState(() {
-        _pingLoading[configId] = true;
-        _pings[configId] = -1;
-        _socialPings[configId] = {
-          for (final key in _socialProbeUrls.keys) key: -1,
-        };
-      });
-    }
-
-    // These are outbound HTTP/TLS response-delay checks through the supplied
-    // V2Ray profile, not ICMP ping. Repeat each target and use the median to
-    // reduce one-off spikes. Probes are deliberately sequential because the
-    // plugin may use a temporary local listener for each delay test.
-    final targets = <String, String>{
-      'SERVER': 'https://www.gstatic.com/generate_204',
-      ..._socialProbeUrls,
-    };
-    final results = <String, int>{};
+    var delay = -1;
 
     try {
       final configJson = _parseConfigToJson(rawUrl);
-      for (final entry in targets.entries) {
-        final samples = <int>[];
-        for (var attempt = 0; attempt < 3; attempt++) {
-          try {
-            final value = await flutterV2ray
-                .getServerDelay(config: configJson, url: entry.value)
-                .timeout(
-                  const Duration(seconds: 8),
-                  onTimeout: () => -1,
-                );
-            if (value > 0) samples.add(value);
-          } catch (e) {
-            debugPrint(
-              'Ping sample failed for $configId/${entry.key} '
-              '(attempt ${attempt + 1}): $e',
-            );
-          }
-        }
-
-        samples.sort();
-        // Require at least two valid samples. For three samples, this is the
-        // middle value; for two, average the two valid readings.
-        if (samples.length >= 2) {
-          results[entry.key] = samples.length.isOdd
-              ? samples[samples.length ~/ 2]
-              : ((samples[(samples.length ~/ 2) - 1] +
-                          samples[samples.length ~/ 2]) /
-                      2)
-                  .round();
-        } else {
-          results[entry.key] = -1;
-        }
-
-        if (!mounted) return;
-        setState(() {
-          if (entry.key == 'SERVER') {
-            _pings[configId] = results[entry.key] ?? -1;
-          } else {
-            _socialPings.putIfAbsent(configId, () => {});
-            _socialPings[configId]![entry.key] = results[entry.key] ?? -1;
-          }
-        });
-      }
+      delay = await flutterV2ray
+          .getServerDelay(config: configJson)
+          .timeout(const Duration(seconds: 20));
     } catch (e) {
       debugPrint('Ping failed for $configId: $e');
-      if (mounted) {
-        setState(() {
-          _pings[configId] = -1;
-          _socialPings[configId] = {
-            for (final key in _socialProbeUrls.keys) key: -1,
-          };
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _pingLoading[configId] = false);
-      }
     }
+
+    if (!mounted) return;
+
+    setState(() {
+      _pings[configId] = delay > 0 ? delay : -1;
+      _pingLoading[configId] = false;
+    });
   }
 
   Future<void> _toggleMainConnection() async {
@@ -2125,7 +2047,6 @@ class _ServerListScreenState extends State<ServerListScreen>
                           final ping = _pings[configId] ?? -1;
                           final pingLoading =
                               _pingLoading[configId] ?? false;
-                          final socialPings = _socialPings[configId] ?? const <String, int>{};
 
                           return GestureDetector(
                             onTap: () {
@@ -2190,30 +2111,16 @@ class _ServerListScreenState extends State<ServerListScreen>
                                         padding: const EdgeInsets.symmetric(
                                           vertical: 14,
                                         ),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(
-                                              (item['name'] ?? 'سرور Xray').toString(),
-                                              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            const SizedBox(height: 5),
-                                            Wrap(
-                                              spacing: 5,
-                                              runSpacing: 3,
-                                              children: _socialProbeUrls.keys.map((key) {
-                                                final ms = socialPings[key] ?? -1;
-                                                return Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                                  decoration: BoxDecoration(color: ms > 0 ? const Color(0x222EBA68) : Colors.white10, borderRadius: BorderRadius.circular(5)),
-                                                  child: Text('$key ${pingLoading && ms < 1 ? '…' : ms > 0 ? '${ms}ms' : '—'}', style: TextStyle(color: ms > 0 ? const Color(0xFF81C784) : Colors.white54, fontSize: 9, fontWeight: FontWeight.w600)),
-                                                );
-                                              }).toList(),
-                                            ),
-                                          ],
+                                        child: Text(
+                                          (item['name'] ?? 'سرور Xray')
+                                              .toString(),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
                                     ),
