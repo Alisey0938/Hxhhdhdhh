@@ -15,6 +15,18 @@ void main() {
   runApp(const MyApp());
 }
 
+// ==================== STEALTH HUD THEME COLORS ====================
+class HudTheme {
+  static const Color background = Color(0xFF080B12);
+  static const Color surface = Color(0xFF0D111C);
+  static const Color cardBg = Color(0xFF0F1320);
+  static const Color crimson = Color(0xFFFF2E54);
+  static const Color amber = Color(0xFFFF8A00);
+  static const Color cyan = Color(0xFF00F2FE);
+  static const Color emerald = Color(0xFF00FF9D);
+  static const Color borderLight = Color(0x1FFFFFFF);
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -24,14 +36,13 @@ class MyApp extends StatelessWidget {
       title: 'HUSKY VPN',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF0A0C14),
+        scaffoldBackgroundColor: HudTheme.background,
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF00F0FF),
-          secondary: Color(0xFFFF007F),
-          surface: Color(0xFF131722),
+          primary: HudTheme.cyan,
+          surface: HudTheme.surface,
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF0A0C14),
+          backgroundColor: HudTheme.surface,
           elevation: 0,
         ),
       ),
@@ -74,12 +85,13 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
   Widget build(BuildContext context) {
     return const Scaffold(
       body: Center(
-        child: CircularProgressIndicator(color: Color(0xFF00F0FF)),
+        child: CircularProgressIndicator(color: HudTheme.cyan),
       ),
     );
   }
 }
 
+// ==================== LOGIN SCREEN ====================
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -94,6 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
 
   bool _isLoading = false;
+  bool _isLoadingLoginAnnouncements = true;
   List> _loginAnnouncements = [];
 
   @override
@@ -115,14 +128,16 @@ class _LoginScreenState extends State<LoginScreen> {
             ? data
                 .whereType()
                 .map((item) => Map<String, dynamic>.from(item))
-                .where((item) =>
-                    item['enabled'] == 1 ||
+                .where((item) => item['enabled'] == 1 ||
                     item['enabled'] == true ||
                     item['enabled']?.toString() == '1')
                 .toList()
             : [];
       });
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _isLoadingLoginAnnouncements = false);
+    }
   }
 
   Widget _buildLoginAnnouncements() {
@@ -147,18 +162,18 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Container(
             width: double.infinity,
             margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFF181D2E),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF00F0FF).withOpacity(0.3)),
+              color: HudTheme.cardBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: HudTheme.amber.withOpacity(0.5)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (imageUrl.isNotEmpty)
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                     child: Image.network(
                       imageUrl,
                       width: double.infinity,
@@ -171,6 +186,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   Text(text, textAlign: TextAlign.right,
                       style: const TextStyle(color: Colors.white, height: 1.5)),
                 ],
+                if (targetUrl.isNotEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 6),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Icon(Icons.open_in_new, size: 16, color: HudTheme.amber),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -182,16 +205,19 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<String> _getDeviceId() async {
     try {
       final deviceInfo = DeviceInfoPlugin();
+
       if (Platform.isAndroid) {
         final info = await deviceInfo.androidInfo;
         final model = info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
         return model.isNotEmpty ? model : 'ANDROID_${info.id}';
       }
+
       if (Platform.isIOS) {
         final info = await deviceInfo.iosInfo;
         return info.model;
       }
     } catch (_) {}
+
     return 'DEVICE_${DateTime.now().millisecondsSinceEpoch}';
   }
 
@@ -201,7 +227,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (username.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لطفاً نام کاربری و رمز عبور را وارد کنید.')),
+        const SnackBar(
+          content: Text('لطفاً نام کاربری و رمز عبور را وارد کنید.'),
+        ),
       );
       return;
     }
@@ -210,6 +238,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final deviceId = await _getDeviceId();
+
       final response = await http
           .post(
             Uri.parse('$apiBase?action=user_login'),
@@ -228,10 +257,12 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       final dynamic data = json.decode(response.body);
+
       if (data is! Map || data['status'] != 'success') {
         _showError(
           data is Map
-              ? (data['message']?.toString() ?? 'نام کاربری یا رمز عبور اشتباه است.')
+              ? (data['message']?.toString() ??
+                  'نام کاربری یا رمز عبور اشتباه است.')
               : 'پاسخ سرور معتبر نیست.',
         );
         return;
@@ -245,6 +276,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final userId = userData['id'].toString();
       final prefs = await SharedPreferences.getInstance();
+
       await prefs.setString('user_id', userId);
       await prefs.setString('device_id', deviceId);
 
@@ -252,7 +284,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => ServerListScreen(userId: userId)),
+        MaterialPageRoute(
+          builder: (_) => ServerListScreen(userId: userId),
+        ),
       );
     } catch (e) {
       _showError('خطا در برقراری ارتباط: $e');
@@ -264,7 +298,10 @@ class _LoginScreenState extends State<LoginScreen> {
   void _showError(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: HudTheme.crimson,
+      ),
     );
   }
 
@@ -287,38 +324,61 @@ class _LoginScreenState extends State<LoginScreen> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFF00F0FF).withOpacity(0.1),
-                  border: Border.all(color: const Color(0xFF00F0FF), width: 2),
+                  color: HudTheme.cardBg,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: HudTheme.crimson.withOpacity(0.5)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: HudTheme.crimson.withOpacity(0.2),
+                      blurRadius: 20,
+                    )
+                  ],
                 ),
-                child: const Icon(Icons.bolt, size: 50, color: Color(0xFF00F0FF)),
+                child: const Icon(
+                  Icons.vpn_key_rounded,
+                  size: 60,
+                  color: HudTheme.crimson,
+                ),
               ),
               const SizedBox(height: 16),
               const Text(
                 'HUSKY VPN',
                 style: TextStyle(
-                  fontSize: 26,
+                  fontSize: 24,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 2.0,
                   color: Colors.white,
                 ),
               ),
-              const SizedBox(height: 32),
+              const Text(
+                'STEALTH-JET ACCESS',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: HudTheme.amber,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.5,
+                ),
+              ),
+              const SizedBox(height: 24),
               _buildLoginAnnouncements(),
+              const SizedBox(height: 8),
               TextField(
                 controller: _usernameController,
                 decoration: InputDecoration(
                   labelText: 'نام کاربری',
-                  labelStyle: const TextStyle(color: Colors.white60),
                   filled: true,
-                  fillColor: const Color(0xFF131722),
+                  fillColor: HudTheme.cardBg,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: HudTheme.borderLight),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: HudTheme.borderLight),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFF00F0FF), width: 1.5),
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: HudTheme.cyan),
                   ),
                 ),
               ),
@@ -328,48 +388,54 @@ class _LoginScreenState extends State<LoginScreen> {
                 obscureText: true,
                 decoration: InputDecoration(
                   labelText: 'رمز عبور',
-                  labelStyle: const TextStyle(color: Colors.white60),
                   filled: true,
-                  fillColor: const Color(0xFF131722),
+                  fillColor: HudTheme.cardBg,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: HudTheme.borderLight),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: HudTheme.borderLight),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFF00F0FF), width: 1.5),
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: HudTheme.cyan),
                   ),
                 ),
                 onSubmitted: (_) => _isLoading ? null : _login(),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00F0FF),
-                    foregroundColor: const Color(0xFF0A0C14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                height: 50,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    gradient: const LinearGradient(
+                      colors: [HudTheme.crimson, HudTheme.amber],
                     ),
-                    elevation: 6,
-                    shadowColor: const Color(0xFF00F0FF).withOpacity(0.4),
                   ),
-                  onPressed: _isLoading ? null : _login,
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(color: Color(0xFF0A0C14), strokeWidth: 2.5),
-                        )
-                      : const Text(
-                          'ورود به سیستم',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: _isLoading ? null : _login,
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text(
+                            'ورود به حساب',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
                           ),
-                        ),
+                  ),
                 ),
               ),
             ],
@@ -380,6 +446,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
+// ==================== SPLIT TUNNELING SCREEN ====================
 class SplitTunnelingScreen extends StatefulWidget {
   const SplitTunnelingScreen({super.key});
 
@@ -388,10 +455,6 @@ class SplitTunnelingScreen extends StatefulWidget {
 }
 
 class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
-  static const Color _background = Color(0xFF0A0C14);
-  static const Color _surface = Color(0xFF131722);
-  static const Color _accent = Color(0xFF00F0FF);
-
   bool _loading = true;
   bool _enabled = false;
   String _search = '';
@@ -462,120 +525,140 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
   Widget build(BuildContext context) {
     final filteredApps = _apps.where((app) {
       final q = _search.trim().toLowerCase();
-      return q.isEmpty ||
-          app.name.toLowerCase().contains(q) ||
+      return q.isEmpty || app.name.toLowerCase().contains(q) ||
           app.packageName.toLowerCase().contains(q);
     }).toList();
 
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: _background,
+        backgroundColor: HudTheme.background,
         appBar: AppBar(
-          backgroundColor: _background,
-          title: const Text('عبور انتخابی برنامه‌ها', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          backgroundColor: HudTheme.surface,
+          title: const Text('عبور انتخابی برنامه‌ها', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           centerTitle: true,
         ),
         body: _loading
-            ? const Center(child: CircularProgressIndicator(color: _accent))
+            ? const Center(child: CircularProgressIndicator(color: HudTheme.cyan))
             : Column(
                 children: [
                   Container(
-                    margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: _surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: _accent.withOpacity(0.3)),
+                      color: HudTheme.cardBg,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: HudTheme.cyan.withOpacity(0.45)),
                     ),
                     child: const Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.info_outline, color: _accent),
+                            Icon(Icons.info_outline, color: HudTheme.cyan, size: 20),
                             SizedBox(width: 8),
-                            Text('راهنمای برنامه‌های مستثنا', textAlign: TextAlign.right,
-                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                            Text('راهنمای برنامه‌های مستثنا از VPN', textAlign: TextAlign.right,
+                                style: TextStyle(fontWeight: FontWeight.bold, color: HudTheme.cyan, fontSize: 13)),
                           ],
                         ),
                         SizedBox(height: 8),
                         Text(
-                          'برنامه‌هایی که انتخاب می‌کنید از تونل VPN عبور نکرده و با اینترنت عادی کار خواهند کرد (مناسب برای همراه‌بانک‌ها و خدمات داخلی).',
+                          'برنامه‌هایی را که نمی‌خواهید از VPN استفاده کنند، در فهرست زیر انتخاب کنید. ترافیک این برنامه‌ها از اینترنت عادی دستگاه عبور می‌کند. پیشنهاد می‌شود همراه‌بانک‌ها و خدمات دولتی را انتخاب کنید.',
                           textAlign: TextAlign.right,
+                          textDirection: TextDirection.rtl,
                           style: TextStyle(height: 1.5, color: Colors.white70, fontSize: 12),
                         ),
                       ],
                     ),
                   ),
                   Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
-                      color: _surface,
-                      borderRadius: BorderRadius.circular(14),
+                      color: HudTheme.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: HudTheme.borderLight),
                     ),
                     child: SwitchListTile(
                       value: _enabled,
-                      activeColor: _accent,
-                      title: const Text('فعال‌سازی استثناهای VPN'),
+                      activeColor: HudTheme.cyan,
+                      title: const Text('فعال‌سازی استثناهای VPN', style: TextStyle(fontSize: 14)),
                       subtitle: Text(
-                        _enabled ? 'مستثنی‌سازی فعال است' : 'همه برنامه‌ها از VPN استفاده می‌کنند',
-                        style: const TextStyle(color: Colors.white54, fontSize: 11),
+                        _enabled
+                            ? 'برنامه‌های انتخاب‌شده از VPN استفاده نمی‌کنند.'
+                            : 'در حالت خاموش، همه برنامه‌ها از VPN استفاده می‌کنند.',
+                        style: const TextStyle(color: Colors.white60, fontSize: 11),
                       ),
                       onChanged: _toggleFeature,
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
                     child: TextField(
                       onChanged: (value) => setState(() => _search = value),
                       decoration: InputDecoration(
                         hintText: 'جست‌وجوی برنامه...',
                         hintTextDirection: TextDirection.rtl,
-                        prefixIcon: const Icon(Icons.search, color: Colors.white54),
+                        prefixIcon: const Icon(Icons.search, color: HudTheme.cyan),
                         filled: true,
-                        fillColor: _surface,
+                        fillColor: HudTheme.surface,
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide.none,
                         ),
                       ),
                     ),
                   ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: Row(
+                      children: [
+                        Text('تعداد کل: ${filteredApps.length}', textDirection: TextDirection.rtl,
+                            style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                        const Spacer(),
+                        Text('برنامه‌های مستثنا: ${_selectedPackages.length}', textDirection: TextDirection.rtl,
+                            style: const TextStyle(color: HudTheme.cyan, fontSize: 11, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
                   Expanded(
                     child: filteredApps.isEmpty
-                        ? const Center(child: Text('برنامه‌ای پیدا نشد.', style: TextStyle(color: Colors.white54)))
+                        ? const Center(child: Text('برنامه‌ای پیدا نشد.'))
                         : ListView.separated(
-                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                            padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
                             itemCount: filteredApps.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 8),
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 6),
                             itemBuilder: (context, index) {
                               final app = filteredApps[index];
                               final selected = _selectedPackages.contains(app.packageName);
                               return Container(
                                 decoration: BoxDecoration(
-                                  color: _surface,
-                                  borderRadius: BorderRadius.circular(12),
+                                  color: HudTheme.surface,
+                                  borderRadius: BorderRadius.circular(10),
                                   border: Border.all(
-                                    color: selected ? _accent.withOpacity(0.5) : Colors.transparent,
+                                    color: selected ? HudTheme.cyan : HudTheme.borderLight,
                                   ),
                                 ),
                                 child: CheckboxListTile(
                                   value: selected,
-                                  activeColor: _accent,
-                                  checkColor: _background,
+                                  activeColor: HudTheme.cyan,
+                                  checkColor: HudTheme.background,
                                   controlAffinity: ListTileControlAffinity.leading,
                                   onChanged: _enabled
                                       ? (value) => _toggleApp(app.packageName, value ?? false)
                                       : null,
                                   secondary: app.icon != null
-                                      ? Image.memory(app.icon!, width: 34, height: 34,
-                                          errorBuilder: (_, __, ___) => const Icon(Icons.android, size: 30))
-                                      : const Icon(Icons.android, size: 30),
-                                  title: Text(app.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                                  subtitle: Text(app.packageName, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                                      ? Image.memory(app.icon!, width: 32, height: 32,
+                                          errorBuilder: (_, __, ___) =>
+                                              const Icon(Icons.android, size: 28))
+                                      : const Icon(Icons.android, size: 28),
+                                  title: Text(app.name, maxLines: 1,
+                                      overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+                                  subtitle: Text(app.packageName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          color: Colors.white38, fontSize: 10)),
                                 ),
                               );
                             },
@@ -584,26 +667,31 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
                   SafeArea(
                     top: false,
                     child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: SizedBox(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+                      child: Container(
                         width: double.infinity,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          gradient: const LinearGradient(
+                            colors: [HudTheme.cyan, HudTheme.emerald],
+                          ),
+                        ),
                         child: ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: _accent,
-                            foregroundColor: _background,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
                           ),
                           onPressed: () {
                             Navigator.pop(context);
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('تنظیمات ذخیره شد؛ برای اعمال تغییرات اتصال VPN را بازنشانی کنید.')),
+                              const SnackBar(
+                                content: Text('تنظیمات ذخیره شد؛ برای اعمال آن‌ها VPN را قطع و دوباره وصل کنید.'),
+                              ),
                             );
                           },
-                          icon: const Icon(Icons.check),
-                          label: const Text('ذخیره و بازگشت', style: TextStyle(fontWeight: FontWeight.bold)),
+                          icon: const Icon(Icons.check, color: HudTheme.background),
+                          label: const Text('ذخیره و بازگشت', style: TextStyle(color: HudTheme.background, fontWeight: FontWeight.bold)),
                         ),
                       ),
                     ),
@@ -615,6 +703,7 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
   }
 }
 
+// ==================== SERVER LIST & MAIN VPN SCREEN ====================
 class ServerListScreen extends StatefulWidget {
   final String userId;
 
@@ -625,13 +714,13 @@ class ServerListScreen extends StatefulWidget {
 }
 
 class _ServerListScreenState extends State<ServerListScreen>
-    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver {
   static const String apiBase = 'https://socialmedia-ad.ir/index.php';
 
   late V2ray flutterV2ray;
-  late AnimationController _pulseController;
 
   List<dynamic> _configs = [];
+
   final Map<String, int> _pings = {};
   final Map<String, bool> _pingLoading = {};
 
@@ -657,16 +746,19 @@ class _ServerListScreenState extends State<ServerListScreen>
 
   String _remainingTimeText = '...';
   String _coreVersion = '26.9.9';
+
   Timer? _userCheckTimer;
 
   bool _isTruthy(dynamic value) {
     if (value == null) return false;
     if (value is bool) return value;
     if (value is int) return value == 1;
+
     if (value is String) {
       final text = value.trim().toLowerCase();
       return text == 'true' || text == '1';
     }
+
     return false;
   }
 
@@ -674,12 +766,6 @@ class _ServerListScreenState extends State<ServerListScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-
     _initDeviceIdAndStart();
     _initV2Ray();
     _fetchConfigs();
@@ -693,6 +779,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     if (_deviceId == null || _deviceId!.isEmpty) {
       try {
         final deviceInfo = DeviceInfoPlugin();
+
         if (Platform.isAndroid) {
           final info = await deviceInfo.androidInfo;
           final model = info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
@@ -704,26 +791,30 @@ class _ServerListScreenState extends State<ServerListScreen>
       } catch (_) {
         _deviceId = 'DEVICE_${DateTime.now().millisecondsSinceEpoch}';
       }
+
       _deviceId ??= 'DEVICE_${DateTime.now().millisecondsSinceEpoch}';
       await prefs.setString('device_id', _deviceId!);
     }
 
     if (!mounted) return;
+
     await _fetchUserDataAndCheck();
 
     _userCheckTimer?.cancel();
-    _userCheckTimer = Timer.periodic(const Duration(minutes: 3), (_) {
-      if (!mounted || _logoutInProgress) return;
-      _fetchUserDataAndCheck();
-      _fetchAnnouncement();
-    });
+    _userCheckTimer = Timer.periodic(
+      const Duration(minutes: 3),
+      (_) {
+        if (!mounted || _logoutInProgress) return;
+        _fetchUserDataAndCheck();
+        _fetchAnnouncement();
+      },
+    );
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _userCheckTimer?.cancel();
-    _pulseController.dispose();
     super.dispose();
   }
 
@@ -739,6 +830,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     flutterV2ray = V2ray(
       onStatusChanged: (status) {
         if (!mounted) return;
+
         final state = status.state.toUpperCase();
 
         if (state == 'CONNECTED') {
@@ -753,6 +845,7 @@ class _ServerListScreenState extends State<ServerListScreen>
           if (_trafficBaselineInitialized) {
             _calculateAndSaveTraffic(status.upload, status.download);
           }
+
           setState(() {
             _isConnected = false;
             _isConnectingProcess = false;
@@ -761,6 +854,7 @@ class _ServerListScreenState extends State<ServerListScreen>
             _trafficBaselineInitialized = false;
             _userWantsDisconnect = false;
           });
+
           _flushPendingTraffic();
         }
       },
@@ -771,11 +865,15 @@ class _ServerListScreenState extends State<ServerListScreen>
         notificationIconResourceType: 'mipmap',
         notificationIconResourceName: 'ic_launcher',
       );
+
       final version = await flutterV2ray.getCoreVersion();
+
       if (mounted && version.isNotEmpty) {
         setState(() => _coreVersion = version);
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('V2Ray initialization failed: $e');
+    }
   }
 
   Future<void> _fetchAnnouncement() async {
@@ -783,9 +881,11 @@ class _ServerListScreenState extends State<ServerListScreen>
       final response = await http
           .get(Uri.parse('$apiBase?action=get_app_announcements'))
           .timeout(const Duration(seconds: 15));
+
       if (response.statusCode != 200 || response.body.trim() == 'null') return;
 
       final dynamic data = json.decode(response.body);
+
       if (mounted && data is List) {
         setState(() {
           _announcementData = data
@@ -827,10 +927,14 @@ class _ServerListScreenState extends State<ServerListScreen>
       }
 
       final currentDeviceId = _deviceId;
+
       if (currentDeviceId != null && currentDeviceId.isNotEmpty) {
         Map<String, dynamic> activeSessions = {};
+
         if (data['active_sessions'] is Map) {
-          activeSessions = Map<String, dynamic>.from(data['active_sessions'] as Map);
+          activeSessions = Map<String, dynamic>.from(
+            data['active_sessions'] as Map,
+          );
         }
 
         if (!activeSessions.containsKey(currentDeviceId)) {
@@ -839,10 +943,12 @@ class _ServerListScreenState extends State<ServerListScreen>
         }
 
         final session = activeSessions[currentDeviceId];
+
         activeSessions[currentDeviceId] = {
           if (session is Map) ...Map<String, dynamic>.from(session),
           'last_seen': DateTime.now().toIso8601String(),
         };
+
         data['active_sessions'] = activeSessions;
 
         await http
@@ -852,19 +958,24 @@ class _ServerListScreenState extends State<ServerListScreen>
               body: json.encode({
                 'id': widget.userId,
                 'device_id': currentDeviceId,
-                'active_sessions': {currentDeviceId: activeSessions[currentDeviceId]},
+                'active_sessions': {
+                  currentDeviceId: activeSessions[currentDeviceId],
+                },
               }),
             )
             .timeout(const Duration(seconds: 15));
       }
 
       _userData = data;
+
       final serverUsedBytes = int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
+
       if (_accumulatedUsedBytes < serverUsedBytes) {
         _accumulatedUsedBytes = serverUsedBytes;
       }
 
       final expireAt = data['expire_at']?.toString() ?? '';
+
       if (expireAt.isNotEmpty) {
         try {
           final expireDate = DateTime.parse(expireAt);
@@ -887,13 +998,30 @@ class _ServerListScreenState extends State<ServerListScreen>
         _remainingTimeText = 'نامحدود';
       }
 
+      final maxGb = double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0;
+
+      if (maxGb > 0) {
+        final usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
+
+        if (usedGb >= maxGb) {
+          await _logoutUser('حجم مصرفی مجاز شما به پایان رسید.');
+          return;
+        }
+      }
+
       if (mounted) setState(() {});
-      if (_pendingTrafficBytes > 0) _flushPendingTraffic();
-    } catch (_) {}
+
+      if (_pendingTrafficBytes > 0) {
+        _flushPendingTraffic();
+      }
+    } catch (e) {
+      debugPrint('User check failed: $e');
+    }
   }
 
   Future<void> _calculateAndSaveTraffic(int currentUpload, int currentDownload) async {
     if (_userData == null) return;
+
     final maxGb = double.tryParse(_userData!['max_volume_gb']?.toString() ?? '0') ?? 0;
     if (maxGb <= 0) return;
 
@@ -912,10 +1040,12 @@ class _ServerListScreenState extends State<ServerListScreen>
 
     final uploadDelta = currentUpload - _lastSessionUpload;
     final downloadDelta = currentDownload - _lastSessionDownload;
+
     _lastSessionUpload = currentUpload;
     _lastSessionDownload = currentDownload;
 
     final totalDelta = uploadDelta + downloadDelta;
+
     if (totalDelta > 0) {
       _pendingTrafficBytes += totalDelta;
       await _flushPendingTraffic();
@@ -925,6 +1055,13 @@ class _ServerListScreenState extends State<ServerListScreen>
   Future<void> _flushPendingTraffic() async {
     if (_trafficUpdateInProgress || _pendingTrafficBytes <= 0) return;
     if (_userData == null) return;
+
+    final maxGb = double.tryParse(_userData!['max_volume_gb']?.toString() ?? '0') ?? 0;
+
+    if (maxGb <= 0) {
+      _pendingTrafficBytes = 0;
+      return;
+    }
 
     final batch = _pendingTrafficBytes;
     _trafficUpdateInProgress = true;
@@ -944,12 +1081,15 @@ class _ServerListScreenState extends State<ServerListScreen>
 
       if (response.statusCode == 200) {
         final dynamic result = json.decode(response.body);
+
         if (result is Map && result['status'] == 'success') {
           _pendingTrafficBytes = (_pendingTrafficBytes - batch).clamp(0, 1 << 62);
           final serverUsedBytes = int.tryParse(result['used_bytes']?.toString() ?? '') ??
               (_accumulatedUsedBytes + batch);
+
           _accumulatedUsedBytes = serverUsedBytes;
           _userData!['used_bytes'] = serverUsedBytes;
+
           if (mounted) setState(() {});
 
           if (_isTruthy(result['deactivated'])) {
@@ -957,7 +1097,8 @@ class _ServerListScreenState extends State<ServerListScreen>
           }
         }
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Traffic update failed: $e');
     } finally {
       _trafficUpdateInProgress = false;
       if (_pendingTrafficBytes > 0 && _isConnected && !_logoutInProgress) {
@@ -969,6 +1110,7 @@ class _ServerListScreenState extends State<ServerListScreen>
   Future<void> _logoutUser(String reason) async {
     if (_logoutInProgress) return;
     _logoutInProgress = true;
+
     _userCheckTimer?.cancel();
 
     try {
@@ -976,6 +1118,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     } catch (_) {}
 
     final currentDeviceId = _deviceId;
+
     if (currentDeviceId != null && _userData != null) {
       try {
         await http
@@ -997,9 +1140,13 @@ class _ServerListScreenState extends State<ServerListScreen>
     await prefs.remove('device_id');
 
     if (!mounted) return;
+
     if (reason.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(reason), backgroundColor: Colors.redAccent),
+        SnackBar(
+          content: Text(reason),
+          backgroundColor: HudTheme.crimson,
+        ),
       );
     }
 
@@ -1041,18 +1188,22 @@ class _ServerListScreenState extends State<ServerListScreen>
       }
 
       if (!mounted) return;
+
       setState(() {
         _configs = loadedConfigs;
+
         if (_configs.isNotEmpty &&
             (_selectedConfigId == null ||
                 !_configs.any((item) => _configId(item) == _selectedConfigId))) {
           _selectedConfigId = _configId(_configs.first);
         }
+
         _isLoading = false;
       });
 
       _testAllPings();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Config fetch failed: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -1069,19 +1220,23 @@ class _ServerListScreenState extends State<ServerListScreen>
   Map<String, String> _rawQueryParametersPreservePlus(Uri uri) {
     final result = <String, String>{};
     final raw = uri.hasQuery ? uri.query : '';
+
     if (raw.isEmpty) return result;
 
     for (final part in raw.split('&')) {
       if (part.isEmpty) continue;
+
       final eq = part.indexOf('=');
       final rawKey = eq >= 0 ? part.substring(0, eq) : part;
       final rawValue = eq >= 0 ? part.substring(eq + 1) : '';
+
       try {
         result[Uri.decodeComponent(rawKey)] = Uri.decodeComponent(rawValue);
       } catch (_) {
         result[rawKey] = rawValue;
       }
     }
+
     return result;
   }
 
@@ -1102,15 +1257,55 @@ class _ServerListScreenState extends State<ServerListScreen>
     if (outbounds is! List) return;
 
     for (final item in outbounds) {
-      if (item is! Map || item['protocol']?.toString().toLowerCase() != 'vless') continue;
+      if (item is! Map) continue;
+      if (item['protocol']?.toString().toLowerCase() != 'vless') continue;
+
       final streamValue = item['streamSettings'];
       if (streamValue is! Map) continue;
+
       final stream = Map<String, dynamic>.from(streamValue);
       item['streamSettings'] = stream;
 
       final rawNetwork = _firstQueryValue(rawQuery, ['type', 'network']);
       if (rawNetwork.isNotEmpty) {
         stream['network'] = rawNetwork.toLowerCase() == 'splithttp' ? 'xhttp' : rawNetwork;
+      }
+
+      final security = _firstQueryValue(rawQuery, ['security']).toLowerCase();
+
+      if (security == 'tls') {
+        final oldTls = stream['tlsSettings'];
+        final tls = oldTls is Map ? Map<String, dynamic>.from(oldTls) : <String, dynamic>{};
+
+        final sni = _firstQueryValue(rawQuery, ['sni', 'serverName']);
+        final fingerprint = _firstQueryValue(rawQuery, ['fp', 'fingerprint']);
+        final alpn = _firstQueryValue(rawQuery, ['alpn']);
+
+        if (sni.isNotEmpty) tls['serverName'] = sni;
+        if (fingerprint.isNotEmpty) tls['fingerprint'] = fingerprint;
+        if (alpn.isNotEmpty) tls['alpn'] = _splitCsv(alpn);
+
+        stream['security'] = 'tls';
+        stream['tlsSettings'] = tls;
+        stream.remove('realitySettings');
+      } else if (security == 'reality') {
+        final oldReality = stream['realitySettings'];
+        final reality = oldReality is Map ? Map<String, dynamic>.from(oldReality) : <String, dynamic>{};
+
+        final sni = _firstQueryValue(rawQuery, ['sni', 'serverName']);
+        final fingerprint = _firstQueryValue(rawQuery, ['fp', 'fingerprint']);
+        final publicKey = _firstQueryValue(rawQuery, ['pbk', 'publicKey']);
+        final shortId = _firstQueryValue(rawQuery, ['sid', 'shortId']);
+
+        reality['show'] = false;
+        if (sni.isNotEmpty) reality['serverName'] = sni;
+        if (fingerprint.isNotEmpty) reality['fingerprint'] = fingerprint;
+        if (publicKey.isNotEmpty) reality['publicKey'] = publicKey;
+        if (shortId.isNotEmpty) reality['shortId'] = shortId;
+
+        stream['security'] = 'reality';
+        stream['realitySettings'] = reality;
+        stream.remove('tlsSettings');
       }
     }
   }
@@ -1128,7 +1323,10 @@ class _ServerListScreenState extends State<ServerListScreen>
           'port': 10808,
           'protocol': 'socks',
           'settings': {'auth': 'noauth', 'udp': true},
-          'sniffing': {'enabled': true, 'destOverride': ['http', 'tls', 'quic']},
+          'sniffing': {
+            'enabled': true,
+            'destOverride': ['http', 'tls', 'quic'],
+          },
         }
       ],
       'outbounds': [
@@ -1138,7 +1336,11 @@ class _ServerListScreenState extends State<ServerListScreen>
       'routing': {
         'domainStrategy': 'AsIs',
         'rules': [
-          {'type': 'field', 'domain': ['full:socialmedia-ad.ir'], 'outboundTag': 'direct'}
+          {
+            'type': 'field',
+            'domain': ['full:socialmedia-ad.ir'],
+            'outboundTag': 'direct'
+          }
         ]
       },
       'mux': {'enabled': true, 'concurrency': 8},
@@ -1160,8 +1362,8 @@ class _ServerListScreenState extends State<ServerListScreen>
       }
     }
 
-    directTag ??= 'api-direct';
-    if (!outbounds.any((item) => item['tag'] == directTag)) {
+    if (directTag == null) {
+      directTag = 'api-direct';
       outbounds.add({'protocol': 'freedom', 'tag': directTag});
     }
     config['outbounds'] = outbounds;
@@ -1191,3 +1393,616 @@ class _ServerListScreenState extends State<ServerListScreen>
 
   String _parseConfigToJson(String rawUrl) {
     var configUrl = _cleanUrl(rawUrl);
+    if (configUrl.isEmpty) throw const FormatException('Config is empty');
+
+    try {
+      final decodedJson = json.decode(configUrl);
+      if (decodedJson is Map) {
+        return json.encode(_applyApiDirectRouting(Map<String, dynamic>.from(decodedJson)));
+      }
+    } catch (_) {}
+
+    final Uri uri = Uri.parse(configUrl);
+    final parser = V2ray.parseFromURL(configUrl);
+    final generated = parser.getFullConfiguration();
+
+    try {
+      final decoded = json.decode(generated);
+      if (decoded is Map) {
+        final config = Map<String, dynamic>.from(decoded);
+        if (uri.scheme.toLowerCase() == 'vless') {
+          _patchVlessAdvancedSettings(config, _rawQueryParametersPreservePlus(uri));
+        }
+        return json.encode(_applyApiDirectRouting(config));
+      }
+    } catch (_) {}
+
+    return generated;
+  }
+
+  Future<void> _testAllPings() async {
+    if (_isTestingAllPings || _configs.isEmpty) return;
+
+    if (mounted) {
+      setState(() {
+        _isTestingAllPings = true;
+        for (final item in _configs) {
+          final id = _configId(item);
+          if (id.isNotEmpty) {
+            _pingLoading[id] = true;
+            _pings[id] = -1;
+          }
+        }
+      });
+    }
+
+    await Future.wait(_configs.map(_testServerDelay));
+
+    if (!mounted) return;
+
+    setState(() {
+      _configs.sort((a, b) {
+        final pingA = _pings[_configId(a)] ?? -1;
+        final pingB = _pings[_configId(b)] ?? -1;
+        final validA = pingA > 0 ? pingA : 1 << 30;
+        final validB = pingB > 0 ? pingB : 1 << 30;
+        return validA.compareTo(validB);
+      });
+
+      _isTestingAllPings = false;
+    });
+  }
+
+  Future<void> _testServerDelay(dynamic item) async {
+    if (item is! Map) return;
+
+    final rawUrl = (item['config'] ?? '').toString().trim();
+    final configId = _configId(item);
+
+    if (rawUrl.isEmpty || configId.isEmpty) {
+      if (mounted && configId.isNotEmpty) {
+        setState(() {
+          _pings[configId] = -1;
+          _pingLoading[configId] = false;
+        });
+      }
+      return;
+    }
+
+    var delay = -1;
+    try {
+      final configJson = _parseConfigToJson(rawUrl);
+      delay = await flutterV2ray
+          .getServerDelay(config: configJson)
+          .timeout(const Duration(seconds: 20));
+    } catch (_) {}
+
+    if (!mounted) return;
+
+    setState(() {
+      _pings[configId] = delay > 0 ? delay : -1;
+      _pingLoading[configId] = false;
+    });
+  }
+
+  Future<void> _toggleMainConnection() async {
+    if (_isConnectingProcess) return;
+
+    if (_isConnected) {
+      setState(() {
+        _userWantsDisconnect = true;
+        _isConnected = false;
+        _isConnectingProcess = true;
+      });
+
+      try {
+        await flutterV2ray.stopV2Ray();
+      } catch (_) {}
+
+      await _flushPendingTraffic();
+
+      if (mounted) {
+        setState(() {
+          _isConnectingProcess = false;
+          _lastSessionUpload = 0;
+          _lastSessionDownload = 0;
+          _trafficBaselineInitialized = false;
+        });
+      }
+      return;
+    }
+
+    if (_configs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('هیچ سروری در دسترس نیست.')),
+      );
+      return;
+    }
+
+    if (_selectedConfigId == null ||
+        !_configs.any((item) => _configId(item) == _selectedConfigId)) {
+      _selectedConfigId = _configId(_configs.first);
+    }
+
+    final selectedConfig = _configs.firstWhere(
+      (item) => _configId(item) == _selectedConfigId,
+      orElse: () => _configs.first,
+    );
+
+    final rawUrl = (selectedConfig['config'] ?? '').toString().trim();
+
+    if (rawUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('آدرس کانفیگ این سرور خالی است.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _userWantsDisconnect = false;
+      _isConnectingProcess = true;
+    });
+
+    try {
+      final hasPermission = await flutterV2ray.requestPermission();
+      if (!hasPermission) {
+        if (mounted) setState(() => _isConnectingProcess = false);
+        return;
+      }
+
+      final configJson = _parseConfigToJson(rawUrl);
+      final remark = (selectedConfig['name'] ?? 'Xray Server').toString().trim().isNotEmpty
+          ? (selectedConfig['name'] ?? 'Xray Server').toString().trim()
+          : 'Xray Server';
+
+      List<String>? blockedApps;
+      if (Platform.isAndroid) {
+        final prefs = await SharedPreferences.getInstance();
+        final splitEnabled = prefs.getBool('split_tunneling_enabled') ?? false;
+        if (splitEnabled) {
+          final selectedPackages =
+              prefs.getStringList('split_tunneling_selected')?.toSet() ?? <String>{};
+          final installedApps = await InstalledApps.getInstalledApps(
+            excludeSystemApps: false,
+            excludeNonLaunchableApps: false,
+            withIcon: false,
+            detectPlatformType: false,
+          );
+          final installedPackages = installedApps
+              .map((app) => app.packageName)
+              .where((packageName) => packageName.isNotEmpty)
+              .toSet();
+          blockedApps = selectedPackages
+              .where((packageName) => installedPackages.contains(packageName))
+              .toList();
+        }
+      }
+
+      await flutterV2ray.startV2Ray(
+        remark: remark,
+        config: configJson,
+        blockedApps: blockedApps,
+        proxyOnly: false,
+      );
+
+      await Future<void>.delayed(const Duration(seconds: 4));
+      if (!mounted || _userWantsDisconnect) return;
+
+      if (!_isConnected) {
+        setState(() => _isConnectingProcess = false);
+      } else {
+        setState(() => _isConnectingProcess = false);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در اتصال: $e'), backgroundColor: HudTheme.crimson),
+      );
+      setState(() {
+        _isConnectingProcess = false;
+        _isConnected = false;
+      });
+    }
+  }
+
+  String _getProtocolType(String url) {
+    final value = url.trim().toLowerCase();
+    if (value.startsWith('vless://')) return 'VLESS';
+    if (value.startsWith('vmess://')) return 'VMESS';
+    if (value.startsWith('trojan://')) return 'TROJAN';
+    if (value.startsWith('ss://') || value.startsWith('shadowsocks://')) return 'SS';
+    if (value.startsWith('hy2://') || value.startsWith('hysteria2://')) return 'HY2';
+    return 'XRAY';
+  }
+
+  Widget _buildAnnouncementBanner() {
+    if (_announcementData.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: _announcementData.map((announcement) {
+        final text = (announcement['text'] ?? '').toString();
+        final imageUrl = (announcement['image_url'] ?? '').toString();
+        final targetUrl = (announcement['target_url'] ?? '').toString().trim();
+        final hasLink = targetUrl.isNotEmpty;
+
+        return GestureDetector(
+          onTap: !hasLink
+              ? null
+              : () async {
+                  final uri = Uri.tryParse(targetUrl);
+                  if (uri == null || !uri.hasScheme) return;
+                  try {
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  } catch (_) {}
+                },
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: HudTheme.cardBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: HudTheme.amber.withOpacity(0.5)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (imageUrl.isNotEmpty)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(imageUrl, width: double.infinity, fit: BoxFit.cover),
+                  ),
+                if (text.isNotEmpty)
+                  Text(text, style: const TextStyle(height: 1.5, fontSize: 12)),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxGb = double.tryParse(_userData?['max_volume_gb']?.toString() ?? '0') ?? 0;
+    final usedGb = maxGb > 0 ? _accumulatedUsedBytes / (1024 * 1024 * 1024) : 0.0;
+    final progress = maxGb > 0 ? (usedGb / maxGb).clamp(0.0, 1.0) : 0.0;
+
+    final selectedConfig = _configs.firstWhere(
+      (item) => _configId(item) == _selectedConfigId,
+      orElse: () => _configs.isNotEmpty ? _configs.first : null,
+    );
+    final selectedName = selectedConfig != null ? selectedConfig['name']?.toString() ?? 'سرور Xray' : 'سرور انتخاب نشده';
+
+    return Scaffold(
+      appBar: AppBar(
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu_rounded, color: Colors.white),
+            onPressed: () {
+              showGeneralDialog<void>(
+                context: context,
+                barrierDismissible: true,
+                barrierLabel: 'منوی اصلی',
+                barrierColor: Colors.black75,
+                transitionDuration: const Duration(milliseconds: 200),
+                pageBuilder: (dialogContext, _, __) {
+                  return Align(
+                    alignment: Alignment.centerRight,
+                    child: Material(
+                      color: HudTheme.surface,
+                      child: SizedBox(
+                        width: 250,
+                        height: double.infinity,
+                        child: Directionality(
+                          textDirection: TextDirection.rtl,
+                          child: SafeArea(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const Padding(
+                                  padding: EdgeInsets.all(18),
+                                  child: Text('منوی اصلی', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: HudTheme.cyan)),
+                                ),
+                                const Divider(color: HudTheme.borderLight),
+                                ListTile(
+                                  leading: const Icon(Icons.shield_outlined, color: HudTheme.cyan),
+                                  title: const Text('عبور انتخابی برنامه‌ها'),
+                                  subtitle: const Text('Split Tunneling', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                                  onTap: () {
+                                    Navigator.of(dialogContext).pop();
+                                    Navigator.of(context).push(MaterialPageRoute<void>(
+                                      builder: (_) => const SplitTunnelingScreen(),
+                                    ));
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        title: Column(
+          children: [
+            const Text('HUSKY VPN', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+            Text('Core: $_coreVersion', style: const TextStyle(fontSize: 10, color: HudTheme.amber)),
+          ],
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout_rounded, color: HudTheme.crimson),
+            onPressed: () => _logoutUser(''),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          _buildAnnouncementBanner(),
+
+          // ================= TACTICAL HUD CONNECTOR CENTERPIECE =================
+          Container(
+            margin: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            decoration: BoxDecoration(
+              color: HudTheme.cardBg,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: _isConnected ? HudTheme.cyan.withOpacity(0.6) : HudTheme.crimson.withOpacity(0.4),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: _isConnected ? HudTheme.cyan.withOpacity(0.15) : HudTheme.crimson.withOpacity(0.1),
+                  blurRadius: 20,
+                  spreadRadius: 2,
+                )
+              ],
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _isConnected ? HudTheme.emerald.withOpacity(0.15) : HudTheme.crimson.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: _isConnected ? HudTheme.emerald : HudTheme.crimson),
+                      ),
+                      child: Text(
+                        _isConnected ? 'CONNECTED' : 'DISCONNECTED',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: _isConnected ? HudTheme.emerald : HudTheme.crimson,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.radar_rounded, size: 18, color: Colors.white54),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                GestureDetector(
+                  onTap: _toggleMainConnection,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    width: 110,
+                    height: 110,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: _isConnected
+                            ? [HudTheme.cyan.withOpacity(0.2), HudTheme.surface]
+                            : [HudTheme.crimson.withOpacity(0.2), HudTheme.surface],
+                      ),
+                      border: Border.all(
+                        color: _isConnected ? HudTheme.emerald : HudTheme.crimson,
+                        width: 3,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _isConnected ? HudTheme.cyan.withOpacity(0.4) : HudTheme.crimson.withOpacity(0.4),
+                          blurRadius: 25,
+                        )
+                      ],
+                    ),
+                    child: Center(
+                      child: _isConnectingProcess
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : Icon(
+                              Icons.power_settings_new_rounded,
+                              size: 52,
+                              color: _isConnected ? HudTheme.emerald : HudTheme.crimson,
+                            ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  selectedName,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+
+          // ================= SERVER LIST HEADER =================
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('لیست سرورها', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                InkWell(
+                  onTap: _isTestingAllPings ? null : _testAllPings,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: HudTheme.surface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: HudTheme.cyan.withOpacity(0.5)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.bolt_rounded, size: 14, color: _isTestingAllPings ? HudTheme.amber : HudTheme.cyan),
+                        const SizedBox(width: 4),
+                        Text(
+                          _isTestingAllPings ? 'در حال پینگ...' : 'تست پینگ همه',
+                          style: const TextStyle(fontSize: 11, color: HudTheme.cyan, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ================= SERVER LIST =================
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: HudTheme.cyan))
+                : _configs.isEmpty
+                    ? const Center(child: Text('سروری یافت نشد.'))
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        itemCount: _configs.length,
+                        itemBuilder: (context, index) {
+                          final item = _configs[index];
+                          final configId = _configId(item);
+                          final isSelected = _selectedConfigId == configId;
+                          final ping = _pings[configId] ?? -1;
+                          final pingLoading = _pingLoading[configId] ?? false;
+                          final protocol = _getProtocolType((item['config'] ?? '').toString());
+
+                          return GestureDetector(
+                            onTap: () {
+                              if (_isConnected) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('ابتدا اتصال فعلی را قطع کنید.')),
+                                );
+                                return;
+                              }
+                              setState(() => _selectedConfigId = configId);
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              decoration: BoxDecoration(
+                                color: isSelected ? HudTheme.surface : HudTheme.cardBg,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isSelected ? HudTheme.cyan : HudTheme.borderLight,
+                                  width: isSelected ? 1.5 : 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 36,
+                                    height: 48,
+                                    alignment: Alignment.center,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.black38,
+                                      borderRadius: BorderRadius.only(
+                                        topRight: Radius.circular(11),
+                                        bottomRight: Radius.circular(11),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      protocol,
+                                      style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: HudTheme.amber),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      (item['name'] ?? 'سرور Xray').toString(),
+                                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 12),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: ping > 0 && ping < 150 ? HudTheme.emerald.withOpacity(0.15) : HudTheme.crimson.withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        pingLoading ? '...' : (ping > 0 ? '${ping}ms' : '-1ms'),
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: ping > 0 && ping < 150 ? HudTheme.emerald : HudTheme.crimson,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+
+          // ================= BOTTOM FOOTER PANEL =================
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: const BoxDecoration(
+              color: HudTheme.surface,
+              border: Border(top: BorderSide(color: HudTheme.borderLight)),
+            ),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.download_rounded, color: HudTheme.cyan, size: 20),
+                  onPressed: _fetchConfigs,
+                ),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            maxGb > 0 ? '${usedGb.toStringAsFixed(1)} / ${maxGb.toStringAsFixed(0)} GB' : 'حجم نامحدود',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                          Text(_remainingTimeText, style: const TextStyle(fontSize: 11, color: HudTheme.emerald)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 4,
+                          backgroundColor: Colors.white12,
+                          color: HudTheme.cyan,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
