@@ -93,7 +93,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isLoading = false;
   bool _isLoadingLoginAnnouncements = true;
-  List<Map<String, dynamic>> _loginAnnouncements = [];
+  List> _loginAnnouncements = [];
 
   @override
   void initState() {
@@ -112,16 +112,16 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() {
         _loginAnnouncements = data is List
             ? data
-                .whereType<Map>()
+                .whereType()
                 .map((item) => Map<String, dynamic>.from(item))
-                .where((item) => item['enabled'] == 1 ||
+                .where((item) =>
+                    item['enabled'] == 1 ||
                     item['enabled'] == true ||
                     item['enabled']?.toString() == '1')
                 .toList()
             : [];
       });
     } catch (_) {
-      // Login must remain available even if announcements cannot be loaded.
     } finally {
       if (mounted) setState(() => _isLoadingLoginAnnouncements = false);
     }
@@ -153,7 +153,8 @@ class _LoginScreenState extends State<LoginScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFF2E354F),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF8B5CF6).withOpacity(0.5)),
+              border:
+                  Border.all(color: const Color(0xFF8B5CF6).withOpacity(0.5)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -170,7 +171,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 if (text.isNotEmpty) ...[
                   if (imageUrl.isNotEmpty) const SizedBox(height: 8),
-                  Text(text, textAlign: TextAlign.right,
+                  Text(text,
+                      textAlign: TextAlign.right,
                       style: const TextStyle(color: Colors.white, height: 1.5)),
                 ],
                 if (targetUrl.isNotEmpty)
@@ -178,7 +180,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     padding: EdgeInsets.only(top: 6),
                     child: Align(
                       alignment: Alignment.centerLeft,
-                      child: Icon(Icons.open_in_new, size: 16, color: Color(0xFFB9C5FF)),
+                      child: Icon(Icons.open_in_new,
+                          size: 16, color: Color(0xFFB9C5FF)),
                     ),
                   ),
               ],
@@ -195,8 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (Platform.isAndroid) {
         final info = await deviceInfo.androidInfo;
-        final model =
-            info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
+        final model = info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
         return model.isNotEmpty ? model : 'ANDROID_${info.id}';
       }
 
@@ -417,7 +419,7 @@ class _ServerListScreenState extends State<ServerListScreen>
   String? _deviceId;
 
   Map<String, dynamic>? _userData;
-  List<Map<String, dynamic>> _announcementData = [];
+  List> _announcementData = [];
 
   int _lastSessionUpload = 0;
   int _lastSessionDownload = 0;
@@ -464,11 +466,9 @@ class _ServerListScreenState extends State<ServerListScreen>
 
         if (Platform.isAndroid) {
           final info = await deviceInfo.androidInfo;
-          final model =
-              info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
+          final model = info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
 
-          _deviceId =
-              model.isNotEmpty ? model : 'ANDROID_${info.id}';
+          _deviceId = model.isNotEmpty ? model : 'ANDROID_${info.id}';
         } else if (Platform.isIOS) {
           final info = await deviceInfo.iosInfo;
           _deviceId = info.model;
@@ -579,7 +579,7 @@ class _ServerListScreenState extends State<ServerListScreen>
       if (mounted && data is List) {
         setState(() {
           _announcementData = data
-              .whereType<Map>()
+              .whereType()
               .map((item) => Map<String, dynamic>.from(item))
               .where((item) => _isTruthy(item['enabled']))
               .toList();
@@ -610,9 +610,7 @@ class _ServerListScreenState extends State<ServerListScreen>
             double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0;
         final usedBytes =
             int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
-        final maxBytes = maxGb > 0
-            ? maxGb * 1024 * 1024 * 1024
-            : 0.0;
+        final maxBytes = maxGb > 0 ? maxGb * 1024 * 1024 * 1024 : 0.0;
 
         if (maxGb > 0 && usedBytes >= maxBytes) {
           await _logoutUser('حجم مصرفی مجاز شما به پایان رسید.');
@@ -699,8 +697,7 @@ class _ServerListScreenState extends State<ServerListScreen>
           double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0;
 
       if (maxGb > 0) {
-        final usedGb =
-            _accumulatedUsedBytes / (1024 * 1024 * 1024);
+        final usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
 
         if (usedGb >= maxGb) {
           await _logoutUser('حجم مصرفی مجاز شما به پایان رسید.');
@@ -941,8 +938,7 @@ class _ServerListScreenState extends State<ServerListScreen>
       final rawValue = eq >= 0 ? part.substring(eq + 1) : '';
 
       try {
-        result[Uri.decodeComponent(rawKey)] =
-            Uri.decodeComponent(rawValue);
+        result[Uri.decodeComponent(rawKey)] = Uri.decodeComponent(rawValue);
       } catch (_) {
         result[rawKey] = rawValue;
       }
@@ -1008,8 +1004,7 @@ class _ServerListScreenState extends State<ServerListScreen>
             : <String, dynamic>{};
 
         final sni = _firstQueryValue(rawQuery, ['sni', 'serverName']);
-        final fingerprint =
-            _firstQueryValue(rawQuery, ['fp', 'fingerprint']);
+        final fingerprint = _firstQueryValue(rawQuery, ['fp', 'fingerprint']);
         final alpn = _firstQueryValue(rawQuery, ['alpn']);
 
         if (sni.isNotEmpty) tls['serverName'] = sni;
@@ -1052,10 +1047,8 @@ class _ServerListScreenState extends State<ServerListScreen>
             : <String, dynamic>{};
 
         final sni = _firstQueryValue(rawQuery, ['sni', 'serverName']);
-        final fingerprint =
-            _firstQueryValue(rawQuery, ['fp', 'fingerprint']);
-        final publicKey =
-            _firstQueryValue(rawQuery, ['pbk', 'publicKey']);
+        final fingerprint = _firstQueryValue(rawQuery, ['fp', 'fingerprint']);
+        final publicKey = _firstQueryValue(rawQuery, ['pbk', 'publicKey']);
         final shortId = _firstQueryValue(rawQuery, ['sid', 'shortId']);
         final spiderX = _firstQueryValue(rawQuery, ['spx', 'spiderX']);
         final mldsa = _firstQueryValue(
@@ -1079,7 +1072,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
   }
 
-  // تنظیمات بیس کانفیگ به همراه قوانین Routing جهت دور زدن تونل برای پنل مدیریت (هاست ایران)
   Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
     if (outbound is Map && !outbound.containsKey('tag')) {
       outbound['tag'] = 'proxy';
@@ -1101,10 +1093,7 @@ class _ServerListScreenState extends State<ServerListScreen>
       ],
       'outbounds': [
         outbound,
-        {
-          'protocol': 'freedom',
-          'tag': 'direct'
-        }
+        {'protocol': 'freedom', 'tag': 'direct'}
       ],
       'routing': {
         'domainStrategy': 'AsIs',
@@ -1123,24 +1112,20 @@ class _ServerListScreenState extends State<ServerListScreen>
     };
   }
 
-  // Ensure API calls to the Iranian hosting panel bypass the proxy tunnel.
-  // Xray routing is hostname-based (not URL-path-based), so this applies to
-  // the whole socialmedia-ad.ir host, including /index.php.
   Map<String, dynamic> _applyApiDirectRouting(Map<String, dynamic> source) {
     final config = Map<String, dynamic>.from(source);
 
     final rawOutbounds = config['outbounds'];
     final outbounds = rawOutbounds is List
         ? rawOutbounds
-            .whereType<Map>()
+            .whereType()
             .map((item) => Map<String, dynamic>.from(item))
             .toList()
-        : <Map<String, dynamic>>[];
+        : >[];
 
     String? directTag;
     for (final outbound in outbounds) {
-      if (outbound['protocol'] == 'freedom' &&
-          outbound['tag'] == 'direct') {
+      if (outbound['protocol'] == 'freedom' && outbound['tag'] == 'direct') {
         directTag = 'direct';
         break;
       }
@@ -1169,10 +1154,9 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
     config['outbounds'] = outbounds;
 
-    // Domain routing for HTTPS needs TLS/HTTP sniffing on the inbound.
     final rawInbounds = config['inbounds'];
     if (rawInbounds is List) {
-      config['inbounds'] = rawInbounds.whereType<Map>().map((item) {
+      config['inbounds'] = rawInbounds.whereType().map((item) {
         final inbound = Map<String, dynamic>.from(item);
         final rawSniffing = inbound['sniffing'];
         final sniffing = rawSniffing is Map
@@ -1198,13 +1182,12 @@ class _ServerListScreenState extends State<ServerListScreen>
         : <String, dynamic>{};
     final rawRules = routing['rules'];
     final rules = rawRules is List
-        ? rawRules.whereType<Map>()
+        ? rawRules
+            .whereType()
             .map((item) => Map<String, dynamic>.from(item))
             .toList()
-        : <Map<String, dynamic>>[];
+        : >[];
 
-    // Remove only our own exact-host rule before reinserting it first,
-    // ensuring existing catch-all/proxy rules cannot shadow the bypass.
     rules.removeWhere((rule) {
       final domains = rule['domain'];
       return rule['type'] == 'field' &&
@@ -1309,13 +1292,14 @@ class _ServerListScreenState extends State<ServerListScreen>
       final userInfo = Uri.decodeComponent(uri.userInfo);
 
       if (serverHost.isEmpty || userInfo.isEmpty) {
-        throw const FormatException('WebSocket config has no server or user ID');
+        throw const FormatException(
+            'WebSocket config has no server or user ID');
       }
 
-      final transportHostValue = _firstQueryValue(query, ['host', 'authority']);
-      final transportHost = transportHostValue.isNotEmpty
-          ? transportHostValue
-          : serverHost;
+      final transportHostValue =
+          _firstQueryValue(query, ['host', 'authority']);
+      final transportHost =
+          transportHostValue.isNotEmpty ? transportHostValue : serverHost;
       final pathValue = _firstQueryValue(query, ['path']);
       final path = pathValue.isNotEmpty ? pathValue : '/';
       final wsSecurity = security.isEmpty ? 'none' : security;
@@ -1348,7 +1332,9 @@ class _ServerListScreenState extends State<ServerListScreen>
               {
                 'id': userInfo,
                 'alterId': int.tryParse(query['aid'] ?? '0') ?? 0,
-                'security': _firstQueryValue(query, ['scy', 'securityMethod']).isNotEmpty
+                'security': _firstQueryValue(query,
+                            ['scy', 'securityMethod'])
+                        .isNotEmpty
                     ? _firstQueryValue(query, ['scy', 'securityMethod'])
                     : 'auto',
               },
@@ -1363,7 +1349,8 @@ class _ServerListScreenState extends State<ServerListScreen>
             'users': [
               {
                 'id': userInfo,
-                'encryption': _firstQueryValue(query, ['encryption']).isNotEmpty
+                'encryption': _firstQueryValue(query, ['encryption'])
+                        .isNotEmpty
                     ? _firstQueryValue(query, ['encryption'])
                     : 'none',
                 if (_firstQueryValue(query, ['flow']).isNotEmpty)
@@ -1493,10 +1480,8 @@ class _ServerListScreenState extends State<ServerListScreen>
         ];
       }
 
-      final stream =
-          outbound['streamSettings'] as Map<String, dynamic>;
-      final xhttp =
-          stream['xhttpSettings'] as Map<String, dynamic>;
+      final stream = outbound['streamSettings'] as Map<String, dynamic>;
+      final xhttp = stream['xhttpSettings'] as Map<String, dynamic>;
 
       final extra = query['extra'];
       if (extra != null && extra.trim().isNotEmpty) {
@@ -1509,8 +1494,7 @@ class _ServerListScreenState extends State<ServerListScreen>
         final tls = <String, dynamic>{};
 
         final sni = _firstQueryValue(query, ['sni', 'serverName']);
-        final fingerprint =
-            _firstQueryValue(query, ['fp', 'fingerprint']);
+        final fingerprint = _firstQueryValue(query, ['fp', 'fingerprint']);
         final alpn = _firstQueryValue(query, ['alpn']);
         final ech = _firstQueryValue(query, ['echConfigList', 'ech']);
         final vcn = _firstQueryValue(
@@ -1537,22 +1521,20 @@ class _ServerListScreenState extends State<ServerListScreen>
       } else if (security == 'reality') {
         final reality = <String, dynamic>{
           'show': false,
-          'serverName': _firstQueryValue(query, ['sni', 'serverName'])
-                  .isNotEmpty
-              ? _firstQueryValue(query, ['sni', 'serverName'])
-              : transportHost,
+          'serverName':
+              _firstQueryValue(query, ['sni', 'serverName']).isNotEmpty
+                  ? _firstQueryValue(query, ['sni', 'serverName'])
+                  : transportHost,
           'fingerprint':
               _firstQueryValue(query, ['fp', 'fingerprint']).isNotEmpty
                   ? _firstQueryValue(query, ['fp', 'fingerprint'])
                   : 'chrome',
         };
 
-        final publicKey =
-            _firstQueryValue(query, ['pbk', 'publicKey']);
+        final publicKey = _firstQueryValue(query, ['pbk', 'publicKey']);
         final shortId = _firstQueryValue(query, ['sid', 'shortId']);
         final spiderX = _firstQueryValue(query, ['spx', 'spiderX']);
-        final mldsa =
-            _firstQueryValue(query, ['pqv', 'mldsa65Verify']);
+        final mldsa = _firstQueryValue(query, ['pqv', 'mldsa65Verify']);
 
         if (publicKey.isNotEmpty) reality['publicKey'] = publicKey;
         if (shortId.isNotEmpty) reality['shortId'] = shortId;
@@ -1725,71 +1707,31 @@ class _ServerListScreenState extends State<ServerListScreen>
 
       final configJson = _parseConfigToJson(rawUrl);
 
-      // Use the name from the admin panel/app list for the Android VPN
-      // foreground notification. The URL's #remark may still contain the
-      // old name after an admin renames a config, so do not override this
-      // value with V2ray.parseFromURL(...).remark.
-      final remark = (selectedConfig['name'] ?? 'Xray Server').toString().trim().isNotEmpty
+      final remark = (selectedConfig['name'] ?? 'Xray Server')
+              .toString()
+              .trim()
+              .isNotEmpty
           ? (selectedConfig['name'] ?? 'Xray Server').toString().trim()
           : 'Xray Server';
 
-      debugPrint('V2Ray: starting profile="$remark"');
-      final debugUri = Uri.tryParse(_cleanUrl(rawUrl));
-      final debugNetwork = debugUri == null
-          ? ''
-          : _firstQueryValue(
-              _rawQueryParametersPreservePlus(debugUri),
-              const ['type', 'network'],
-            );
-      debugPrint(
-        'V2Ray: parsed scheme=${debugUri?.scheme}, '
-        'host=${debugUri?.host}, port=${debugUri?.port}, '
-        'network=$debugNetwork',
-      );
+      // خواندن برنامه‌های انتخاب شده برای Split Tunneling از SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final blockedAppsList = prefs.getStringList('split_tunneling_apps') ?? [];
 
       await flutterV2ray.startV2Ray(
         remark: remark,
         config: configJson,
         proxyOnly: false,
+        blockedApps: blockedAppsList,
       );
 
       await Future<void>.delayed(const Duration(seconds: 4));
       if (!mounted || _userWantsDisconnect) return;
 
-      if (!_isConnected) {
-        setState(() => _isConnectingProcess = false);
-        debugPrint('V2Ray: no CONNECTED status after 4 seconds; collecting core logs.');
-        try {
-          final logs = await flutterV2ray.getLogs();
-          for (final line in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
-            debugPrint('[XRAY_CORE] $line');
-          }
-        } catch (logError) {
-          debugPrint('V2Ray: unable to read core logs: $logError');
-        }
-
-        if (mounted && !_isConnected) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('هسته اتصال را تأیید نکرد. لاگ‌های [XRAY_CORE] را از Debug Console بررسی کنید.'),
-              duration: Duration(seconds: 6),
-            ),
-          );
-        }
-      } else {
-        setState(() => _isConnectingProcess = false);
-      }
+      setState(() => _isConnectingProcess = false);
     } catch (e, stackTrace) {
       debugPrint('V2Ray start failed: $e');
       debugPrint('$stackTrace');
-      try {
-        final logs = await flutterV2ray.getLogs();
-        for (final line in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
-          debugPrint('[XRAY_CORE] $line');
-        }
-      } catch (logError) {
-        debugPrint('V2Ray: unable to read core logs: $logError');
-      }
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1812,13 +1754,11 @@ class _ServerListScreenState extends State<ServerListScreen>
     if (value.startsWith('vless://')) return 'VLESS';
     if (value.startsWith('vmess://')) return 'VMESS';
     if (value.startsWith('trojan://')) return 'TROJAN';
-    if (value.startsWith('ss://') ||
-        value.startsWith('shadowsocks://')) {
+    if (value.startsWith('ss://') || value.startsWith('shadowsocks://')) {
       return 'SS';
     }
     if (value.startsWith('socks://')) return 'SOCKS';
-    if (value.startsWith('hysteria2://') ||
-        value.startsWith('hy2://')) {
+    if (value.startsWith('hysteria2://') || value.startsWith('hy2://')) {
       return 'HY2';
     }
     if (value.startsWith('hysteria://')) return 'HYSTERIA';
@@ -1856,8 +1796,6 @@ class _ServerListScreenState extends State<ServerListScreen>
                   } catch (_) {}
                 },
           child: Container(
-            // Match the horizontal width and alignment of the config cards
-            // (ListView horizontal padding: 12 and card bottom margin: 10).
             width: double.infinity,
             margin: const EdgeInsets.only(
               left: 12,
@@ -1967,6 +1905,19 @@ class _ServerListScreenState extends State<ServerListScreen>
         ),
         centerTitle: true,
         actions: [
+          // دکمه ورود به صفحه Split Tunneling (تفکیک برنامه‌ها)
+          IconButton(
+            icon: const Icon(Icons.apps_rounded, color: Color(0xFFC4B5FD)),
+            tooltip: 'تفکیک برنامه‌ها (Split Tunneling)',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const SplitTunnelingScreen(),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.redAccent),
             onPressed: () {
@@ -2292,6 +2243,127 @@ class _ServerListScreenState extends State<ServerListScreen>
           ],
         ),
       ),
+    );
+  }
+}
+
+// ==========================================
+// صفحه مدیریت تفکیک برنامه‌ها (Split Tunneling)
+// ==========================================
+class SplitTunnelingScreen extends StatefulWidget {
+  const SplitTunnelingScreen({super.key});
+
+  @override
+  State<SplitTunnelingScreen> createState() => _SplitTunnelingScreenState();
+}
+
+class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
+  // لیست نمونه از برنامه‌های پرکاربرد با پکیج‌نیم استاندارد آن‌ها
+  final List> _commonApps = [
+    {'name': 'تلگرام (Telegram)', 'package': 'org.telegram.messenger'},
+    {'name': 'اینستاگرام (Instagram)', 'package': 'com.instagram.android'},
+    {'name': 'واتساپ (WhatsApp)', 'package': 'com.whatsapp'},
+    {'name': 'یوتیوب (YouTube)', 'package': 'com.google.android.youtube'},
+    {'name': 'گوگل کروم (Chrome)', 'package': 'com.android.chrome'},
+    {'name': 'ایتا (Eitaa)', 'package': 'ir.eitaa.messenger'},
+    {'name': 'روبیکا (Rubika)', 'package': 'app.rbk.android'},
+    {'name': 'توییتر / ایکس (X/Twitter)', 'package': 'com.twitter.android'},
+  ];
+
+  final Set<String> _selectedPackages = {};
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedSettings();
+  }
+
+  Future<void> _loadSavedSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList('split_tunneling_apps') ?? [];
+    if (mounted) {
+      setState(() {
+        _selectedPackages.addAll(saved);
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _saveSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+        'split_tunneling_apps', _selectedPackages.toList());
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('تنظیمات Split Tunneling ذخیره شد.'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('تفکیک برنامه‌ها (Split Tunneling)'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.save_rounded),
+            tooltip: 'ذخیره',
+            onPressed: _saveSettings,
+          ),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  color: const Color(0xFF222536),
+                  child: const Text(
+                    'برنامه‌هایی که تیک می‌زنید از VPN عبور نخواهند کرد (مستقیماً به اینترنت آزاد/ملی متصل می‌شوند).',
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: _commonApps.length,
+                    itemBuilder: (context, index) {
+                      final app = _commonApps[index];
+                      final packageName = app['package']!;
+                      final appName = app['name']!;
+                      final isChecked = _selectedPackages.contains(packageName);
+
+                      return CheckboxListTile(
+                        title: Text(appName,
+                            style: const TextStyle(color: Colors.white)),
+                        subtitle: Text(packageName,
+                            style: const TextStyle(
+                                color: Colors.white54, fontSize: 11)),
+                        value: isChecked,
+                        activeColor: const Color(0xFF8B5CF6),
+                        checkColor: Colors.white,
+                        onChanged: (bool? value) {
+                          setState(() {
+                            if (value == true) {
+                              _selectedPackages.add(packageName);
+                            } else {
+                              _selectedPackages.remove(packageName);
+                            }
+                          });
+                          _saveSettings();
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
