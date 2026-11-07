@@ -105,7 +105,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isLoading = false;
   bool _isLoadingLoginAnnouncements = true;
-  List> _loginAnnouncements = [];
+  List _loginAnnouncements = [];
 
   @override
   void initState() {
@@ -457,8 +457,8 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
   bool _loading = true;
   bool _enabled = false;
   String _search = '';
-  List<AppInfo> _apps = [];
-  Set<String> _selectedPackages = <String>{};
+  List _apps = [];
+  Set _selectedPackages = {};
 
   @override
   void initState() {
@@ -470,8 +470,8 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final enabled = prefs.getBool('split_tunneling_enabled') ?? false;
-      final selected =
-          prefs.getStringList('split_tunneling_selected')?.toSet() ?? <String>{};
+      final selectedList = prefs.getStringList('split_tunneling_selected') ?? [];
+      final selected = selectedList.toSet();
       final apps = await InstalledApps.getInstalledApps(
         excludeSystemApps: false,
         excludeNonLaunchableApps: true,
@@ -498,10 +498,8 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('split_tunneling_enabled', _enabled);
-    await prefs.setStringList(
-      'split_tunneling_selected',
-      _selectedPackages.toList(),
-    );
+    final listToSave = _selectedPackages.map((e) => e.toString()).toList();
+    await prefs.setStringList('split_tunneling_selected', listToSave);
   }
 
   Future<void> _toggleApp(String packageName, bool selected) async {
@@ -524,8 +522,9 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
   Widget build(BuildContext context) {
     final filteredApps = _apps.where((app) {
       final q = _search.trim().toLowerCase();
-      return q.isEmpty || app.name.toLowerCase().contains(q) ||
-          app.packageName.toLowerCase().contains(q);
+      final name = app.name.toString().toLowerCase();
+      final pkg = app.packageName.toString().toLowerCase();
+      return q.isEmpty || name.contains(q) || pkg.contains(q);
     }).toList();
 
     return Directionality(
@@ -562,7 +561,7 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
                         ),
                         SizedBox(height: 8),
                         Text(
-                          'برنامه‌هایی را که نمی‌خواهید از VPN استفاده کنند، در فهرست زیر انتخاب کنید. ترافیک این برنامه‌ها از اینترنت عادی دستگاه عبور می‌کند. پیشنهاد می‌شود همراه‌بانک‌ها و خدمات دولتی را انتخاب کنید.',
+                          'برنامه‌هایی را که نمی‌خواهید از VPN استفاده کنند، در فهرست زیر انتخاب کنید. ترافیک این برنامه‌ها از اینترنت عادی دستگاه عبور می‌کند.',
                           textAlign: TextAlign.right,
                           textDirection: TextDirection.rtl,
                           style: TextStyle(height: 1.5, color: Colors.white70, fontSize: 12),
@@ -644,16 +643,16 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
                                   checkColor: HudTheme.background,
                                   controlAffinity: ListTileControlAffinity.leading,
                                   onChanged: _enabled
-                                      ? (value) => _toggleApp(app.packageName, value ?? false)
+                                      ? (value) => _toggleApp(app.packageName.toString(), value ?? false)
                                       : null,
                                   secondary: app.icon != null
                                       ? Image.memory(app.icon!, width: 32, height: 32,
                                           errorBuilder: (_, __, ___) =>
                                               const Icon(Icons.android, size: 28))
                                       : const Icon(Icons.android, size: 28),
-                                  title: Text(app.name, maxLines: 1,
+                                  title: Text(app.name.toString(), maxLines: 1,
                                       overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
-                                  subtitle: Text(app.packageName,
+                                  subtitle: Text(app.packageName.toString(),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
@@ -717,7 +716,7 @@ class _ServerListScreenState extends State<ServerListScreen>
 
   late V2ray flutterV2ray;
 
-  List<dynamic> _configs = [];
+  List _configs = [];
 
   final Map<String, int> _pings = {};
   final Map<String, bool> _pingLoading = {};
@@ -735,7 +734,7 @@ class _ServerListScreenState extends State<ServerListScreen>
   String? _deviceId;
 
   Map<String, dynamic>? _userData;
-  List> _announcementData = [];
+  List _announcementData = [];
 
   int _lastSessionUpload = 0;
   int _lastSessionDownload = 0;
@@ -1169,7 +1168,7 @@ class _ServerListScreenState extends State<ServerListScreen>
       }
 
       final dynamic data = json.decode(response.body);
-      final List<dynamic> loadedConfigs = [];
+      final List loadedConfigs = [];
 
       if (data is List) {
         for (final item in data) {
@@ -1238,9 +1237,10 @@ class _ServerListScreenState extends State<ServerListScreen>
     return result;
   }
 
-  String _firstQueryValue(Map<String, String> query, List<String> keys) {
+  String _firstQueryValue(Map<String, String> query, List keys) {
     for (final key in keys) {
-      final value = query[key]?.trim();
+      final k = key.toString();
+      final value = query[k]?.trim();
       if (value != null && value.isNotEmpty) return value;
     }
     return '';
@@ -1308,49 +1308,12 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
   }
 
-  Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
-    if (outbound is Map && !outbound.containsKey('tag')) {
-      outbound['tag'] = 'proxy';
-    }
-
-    return {
-      'log': {'loglevel': 'warning'},
-      'inbounds': [
-        {
-          'listen': '127.0.0.1',
-          'port': 10808,
-          'protocol': 'socks',
-          'settings': {'auth': 'noauth', 'udp': true},
-          'sniffing': {
-            'enabled': true,
-            'destOverride': ['http', 'tls', 'quic'],
-          },
-        }
-      ],
-      'outbounds': [
-        outbound,
-        {'protocol': 'freedom', 'tag': 'direct'}
-      ],
-      'routing': {
-        'domainStrategy': 'AsIs',
-        'rules': [
-          {
-            'type': 'field',
-            'domain': ['full:socialmedia-ad.ir'],
-            'outboundTag': 'direct'
-          }
-        ]
-      },
-      'mux': {'enabled': true, 'concurrency': 8},
-    };
-  }
-
   Map<String, dynamic> _applyApiDirectRouting(Map<String, dynamic> source) {
     final config = Map<String, dynamic>.from(source);
     final rawOutbounds = config['outbounds'];
     final outbounds = rawOutbounds is List
         ? rawOutbounds.whereType().map((item) => Map<String, dynamic>.from(item)).toList()
-        : >[];
+        : [];
 
     String? directTag;
     for (final outbound in outbounds) {
@@ -1371,7 +1334,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     final rawRules = routing['rules'];
     final rules = rawRules is List
         ? rawRules.whereType().map((item) => Map<String, dynamic>.from(item)).toList()
-        : >[];
+        : [];
 
     rules.removeWhere((rule) {
       final domains = rule['domain'];
@@ -1558,8 +1521,8 @@ class _ServerListScreenState extends State<ServerListScreen>
         final prefs = await SharedPreferences.getInstance();
         final splitEnabled = prefs.getBool('split_tunneling_enabled') ?? false;
         if (splitEnabled) {
-          final selectedPackages =
-              prefs.getStringList('split_tunneling_selected')?.toSet() ?? <String>{};
+          final selectedPackagesList = prefs.getStringList('split_tunneling_selected') ?? [];
+          final selectedPackages = selectedPackagesList.toSet();
           final installedApps = await InstalledApps.getInstalledApps(
             excludeSystemApps: false,
             excludeNonLaunchableApps: false,
@@ -1567,11 +1530,12 @@ class _ServerListScreenState extends State<ServerListScreen>
             detectPlatformType: false,
           );
           final installedPackages = installedApps
-              .map((app) => app.packageName)
+              .map((app) => app.packageName.toString())
               .where((packageName) => packageName.isNotEmpty)
               .toSet();
           blockedApps = selectedPackages
               .where((packageName) => installedPackages.contains(packageName))
+              .map((e) => e.toString())
               .toList();
         }
       }
@@ -1680,7 +1644,7 @@ class _ServerListScreenState extends State<ServerListScreen>
                 context: context,
                 barrierDismissible: true,
                 barrierLabel: 'منوی اصلی',
-                barrierColor: Colors.black87,
+                barrierColor: const Color(0x99000000),
                 transitionDuration: const Duration(milliseconds: 200),
                 pageBuilder: (dialogContext, _, __) {
                   return Align(
