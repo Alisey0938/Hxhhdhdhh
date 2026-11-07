@@ -1682,7 +1682,7 @@ class _ServerListScreenState extends State<ServerListScreen>
                 context: context,
                 barrierDismissible: true,
                 barrierLabel: 'منوی اصلی',
-                barrierColor: Colors.black75,
+                barrierColor: Colors.black87,
                 transitionDuration: const Duration(milliseconds: 200),
                 pageBuilder: (dialogContext, _, __) {
                   return Align(
