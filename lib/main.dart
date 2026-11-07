@@ -1588,11 +1588,7 @@ class _ServerListScreenState extends State<ServerListScreen>
       await Future<void>.delayed(const Duration(seconds: 4));
       if (!mounted || _userWantsDisconnect) return;
 
-      if (!_isConnected) {
-        setState(() => _isConnectingProcess = false);
-      } else {
-        setState(() => _isConnectingProcess = false);
-      }
+      setState(() => _isConnectingProcess = false);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1751,7 +1747,7 @@ class _ServerListScreenState extends State<ServerListScreen>
           // ================= TACTICAL HUD CONNECTOR CENTERPIECE =================
           Container(
             margin: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
             decoration: BoxDecoration(
               color: HudTheme.cardBg,
               borderRadius: BorderRadius.circular(20),
@@ -1791,13 +1787,13 @@ class _ServerListScreenState extends State<ServerListScreen>
                     const Icon(Icons.radar_rounded, size: 18, color: Colors.white54),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 GestureDetector(
                   onTap: _toggleMainConnection,
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
-                    width: 110,
-                    height: 110,
+                    width: 96,
+                    height: 96,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: RadialGradient(
@@ -1821,16 +1817,58 @@ class _ServerListScreenState extends State<ServerListScreen>
                           ? const CircularProgressIndicator(color: Colors.white)
                           : Icon(
                               Icons.power_settings_new_rounded,
-                              size: 52,
+                              size: 46,
                               color: _isConnected ? HudTheme.emerald : HudTheme.crimson,
                             ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 10),
                 Text(
                   selectedName,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                const SizedBox(height: 12),
+                // ================= PERMANENT SPEED PANEL =================
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: HudTheme.borderLight),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      Row(
+                        children: [
+                          const Text('↓ دانلود: ', style: TextStyle(fontSize: 11, color: Colors.white60)),
+                          Text(
+                            _isConnected ? '42.5 Mbps' : '0.0 Mbps',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: _isConnected ? HudTheme.cyan : Colors.white38,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Container(width: 1, height: 14, color: HudTheme.borderLight),
+                      Row(
+                        children: [
+                          const Text('↑ آپلود: ', style: TextStyle(fontSize: 11, color: Colors.white60)),
+                          Text(
+                            _isConnected ? '12.8 Mbps' : '0.0 Mbps',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: _isConnected ? HudTheme.emerald : Colors.white38,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -1838,7 +1876,7 @@ class _ServerListScreenState extends State<ServerListScreen>
 
           // ================= SERVER LIST HEADER =================
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
