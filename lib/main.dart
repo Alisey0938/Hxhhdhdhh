@@ -471,11 +471,13 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
           app.packageName.toLowerCase().contains(q);
     }).toList();
 
-    return Scaffold(
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
       backgroundColor: _background,
       appBar: AppBar(
         backgroundColor: _background,
-        title: const Text('Split Tunneling', style: TextStyle(fontSize: 18)),
+        title: const Text('عبور انتخابی برنامه‌ها', style: TextStyle(fontSize: 18)),
         centerTitle: true,
       ),
       body: _loading
@@ -497,13 +499,15 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
                         children: [
                           Icon(Icons.info_outline, color: Color(0xFFC4B5FD)),
                           SizedBox(width: 8),
-                          Text('راهنمای عبور برنامه‌ها از VPN',
+                          Text('راهنمای برنامه‌های مستثنا از VPN', textAlign: TextAlign.right,
                               style: TextStyle(fontWeight: FontWeight.bold)),
                         ],
                       ),
                       SizedBox(height: 8),
                       Text(
-                        'برنامه‌هایی که در فهرست زیر انتخاب می‌کنید از VPN استفاده می‌کنند؛ سایر برنامه‌ها از اینترنت عادی دستگاه استفاده خواهند کرد. لطفاً برنامه‌های داخلی ایران، به‌ویژه اپلیکیشن‌های بانکی، را انتخاب نکنید تا ترافیک آن‌ها از VPN عبور نکند.',
+                        'برنامه‌هایی را که نمی‌خواهید از VPN استفاده کنند، در فهرست زیر انتخاب کنید. ترافیک این برنامه‌ها از اینترنت عادی دستگاه عبور می‌کند و سایر برنامه‌ها از VPN استفاده خواهند کرد. لطفاً برنامه‌های ایرانی و داخلی، به‌خصوص همراه‌بانک‌ها، اپلیکیشن‌های بانکی، پرداخت و خدمات دولتی را انتخاب کنید تا از VPN عبور نکنند.',
+                        textAlign: TextAlign.right,
+                        textDirection: TextDirection.rtl,
                         style: TextStyle(height: 1.6, color: Colors.white70),
                       ),
                     ],
@@ -518,11 +522,11 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
                   child: SwitchListTile(
                     value: _enabled,
                     activeColor: _accent,
-                    title: const Text('فعال‌سازی Split Tunneling'),
+                    title: const Text('فعال‌سازی استثناهای VPN'),
                     subtitle: Text(
                       _enabled
-                          ? 'فقط برنامه‌های انتخاب‌شده از VPN عبور می‌کنند.'
-                          : 'در حالت خاموش، همه برنامه‌ها مانند قبل از VPN استفاده می‌کنند.',
+                          ? 'برنامه‌های انتخاب‌شده از VPN استفاده نمی‌کنند.'
+                          : 'در حالت خاموش، همه برنامه‌ها از VPN استفاده می‌کنند.',
                       style: const TextStyle(color: Colors.white60, fontSize: 12),
                     ),
                     onChanged: _toggleFeature,
@@ -534,6 +538,7 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
                     onChanged: (value) => setState(() => _search = value),
                     decoration: InputDecoration(
                       hintText: 'جست‌وجوی برنامه...',
+                      hintTextDirection: TextDirection.rtl,
                       prefixIcon: const Icon(Icons.search),
                       filled: true,
                       fillColor: _surface,
@@ -548,10 +553,10 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   child: Row(
                     children: [
-                      Text('برنامه‌ها: ${filteredApps.length}',
+                      Text('تعداد برنامه‌ها: ${filteredApps.length}', textDirection: TextDirection.rtl,
                           style: const TextStyle(color: Colors.white60)),
                       const Spacer(),
-                      Text('انتخاب‌شده: ${_selectedPackages.length}',
+                      Text('برنامه‌های مستثنا: ${_selectedPackages.length}', textDirection: TextDirection.rtl,
                           style: const TextStyle(color: Color(0xFFC4B5FD))),
                     ],
                   ),
@@ -624,6 +629,7 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
                 ),
               ],
             ),
+      ),
     );
   }
 }
@@ -2008,15 +2014,17 @@ class _ServerListScreenState extends State<ServerListScreen>
             withIcon: false,
             detectPlatformType: false,
           );
-          blockedApps = installedApps
+          // Selected packages are excluded from the VPN tunnel.
+          // Unselected applications continue to use the VPN as usual.
+          final installedPackages = installedApps
               .map((app) => app.packageName)
-              .where((packageName) =>
-                  packageName.isNotEmpty && !selectedPackages.contains(packageName))
-              .toSet()
+              .where((packageName) => packageName.isNotEmpty)
+              .toSet();
+          blockedApps = selectedPackages
+              .where((packageName) => installedPackages.contains(packageName))
               .toList();
           debugPrint(
-            'Split tunneling enabled: ${selectedPackages.length} allowed, '
-            '${blockedApps.length} excluded from VPN',
+            'Split tunneling enabled: ${blockedApps.length} apps excluded from VPN',
           );
         }
       }
@@ -2227,7 +2235,72 @@ class _ServerListScreenState extends State<ServerListScreen>
         : 0.0;
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: Directionality(
+        textDirection: TextDirection.ltr,
+        child: AppBar(
+        automaticallyImplyLeading: false,
+        leading: Builder(
+          builder: (context) => IconButton(
+            tooltip: 'منو',
+            icon: const Icon(Icons.menu, color: Colors.white70),
+            onPressed: () {
+              final screenWidth = MediaQuery.of(context).size.width;
+              showGeneralDialog<void>(
+                context: context,
+                barrierDismissible: true,
+                barrierLabel: 'منوی اصلی',
+                barrierColor: Colors.black54,
+                transitionDuration: const Duration(milliseconds: 220),
+                pageBuilder: (dialogContext, animation, secondaryAnimation) {
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: Material(
+                      color: const Color(0xFF222536),
+                      elevation: 16,
+                      child: SizedBox(
+                        width: screenWidth * 0.58,
+                        height: double.infinity,
+                        child: Directionality(
+                          textDirection: TextDirection.rtl,
+                          child: SafeArea(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const Padding(
+                                  padding: EdgeInsets.fromLTRB(18, 24, 18, 18),
+                                  child: Text('منوی اصلی', textAlign: TextAlign.right,
+                                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                ),
+                                const Divider(height: 1, color: Colors.white12),
+                                ListTile(
+                                  leading: const Icon(Icons.shield_outlined, color: Color(0xFFC4B5FD)),
+                                  title: const Text('عبور انتخابی برنامه‌ها', textAlign: TextAlign.right),
+                                  subtitle: const Text('مدیریت برنامه‌های خارج از VPN', textAlign: TextAlign.right,
+                                    style: TextStyle(color: Colors.white54, fontSize: 11)),
+                                  onTap: () {
+                                    Navigator.of(dialogContext).pop();
+                                    Navigator.of(context).push(MaterialPageRoute<void>(
+                                      builder: (_) => const SplitTunnelingScreen(),
+                                    ));
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                transitionBuilder: (context, animation, secondaryAnimation, child) {
+                  final slide = Tween<Offset>(begin: const Offset(-1, 0), end: Offset.zero)
+                      .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
+                  return SlideTransition(position: slide, child: child);
+                },
+              );
+            },
+          ),
+        ),
         title: Column(
           children: [
             const Text(
@@ -2273,18 +2346,8 @@ class _ServerListScreenState extends State<ServerListScreen>
               );
             },
           ),
-          IconButton(
-            tooltip: 'Split Tunneling',
-            icon: const Icon(Icons.menu, color: Colors.white70),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const SplitTunnelingScreen(),
-                ),
-              );
-            },
-          ),
         ],
+      ),
       ),
       body: Column(
         children: [
