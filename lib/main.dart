@@ -15,7 +15,6 @@ void main() {
   runApp(const MyApp());
 }
 
-// ==================== STEALTH HUD THEME COLORS ====================
 class HudTheme {
   static const Color background = Color(0xFF080B12);
   static const Color surface = Color(0xFF0D111C);
@@ -91,7 +90,6 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
   }
 }
 
-// ==================== LOGIN SCREEN ====================
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -124,15 +122,17 @@ class _LoginScreenState extends State<LoginScreen> {
       final dynamic data = json.decode(response.body);
       if (!mounted) return;
       setState(() {
-        _loginAnnouncements = data is List
-            ? data
-                .whereType()
-                .map((item) => Map<String, dynamic>.from(item))
-                .where((item) => item['enabled'] == 1 ||
-                    item['enabled'] == true ||
-                    item['enabled']?.toString() == '1')
-                .toList()
-            : [];
+        if (data is List) {
+          _loginAnnouncements = data
+              .whereType()
+              .map((item) => Map<String, dynamic>.from(item))
+              .where((item) => item['enabled'] == 1 ||
+                  item['enabled'] == true ||
+                  item['enabled']?.toString() == '1')
+              .toList();
+        } else {
+          _loginAnnouncements = [];
+        }
       });
     } catch (_) {
     } finally {
@@ -446,7 +446,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ==================== SPLIT TUNNELING SCREEN ====================
 class SplitTunnelingScreen extends StatefulWidget {
   const SplitTunnelingScreen({super.key});
 
@@ -703,7 +702,6 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
   }
 }
 
-// ==================== SERVER LIST & MAIN VPN SCREEN ====================
 class ServerListScreen extends StatefulWidget {
   final String userId;
 
@@ -1743,8 +1741,6 @@ class _ServerListScreenState extends State<ServerListScreen>
       body: Column(
         children: [
           _buildAnnouncementBanner(),
-
-          // ================= TACTICAL HUD CONNECTOR CENTERPIECE =================
           Container(
             margin: const EdgeInsets.fromLTRB(14, 10, 14, 10),
             padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
@@ -1829,7 +1825,6 @@ class _ServerListScreenState extends State<ServerListScreen>
                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
                 const SizedBox(height: 12),
-                // ================= PERMANENT SPEED PANEL =================
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
@@ -1873,8 +1868,6 @@ class _ServerListScreenState extends State<ServerListScreen>
               ],
             ),
           ),
-
-          // ================= SERVER LIST HEADER =================
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
             child: Row(
@@ -1905,8 +1898,6 @@ class _ServerListScreenState extends State<ServerListScreen>
               ],
             ),
           ),
-
-          // ================= SERVER LIST =================
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: HudTheme.cyan))
@@ -1995,8 +1986,6 @@ class _ServerListScreenState extends State<ServerListScreen>
                         },
                       ),
           ),
-
-          // ================= BOTTOM FOOTER PANEL =================
           Container(
             padding: const EdgeInsets.all(12),
             decoration: const BoxDecoration(
