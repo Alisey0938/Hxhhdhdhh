@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_v2ray_client/flutter_v2ray.dart';
+import 'package:installed_apps/installed_apps.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -93,7 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isLoading = false;
   bool _isLoadingLoginAnnouncements = true;
-  List> _loginAnnouncements = [];
+  List<Map<String, dynamic>> _loginAnnouncements = [];
 
   @override
   void initState() {
@@ -112,16 +113,16 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() {
         _loginAnnouncements = data is List
             ? data
-                .whereType()
+                .whereType<Map>()
                 .map((item) => Map<String, dynamic>.from(item))
-                .where((item) =>
-                    item['enabled'] == 1 ||
+                .where((item) => item['enabled'] == 1 ||
                     item['enabled'] == true ||
                     item['enabled']?.toString() == '1')
                 .toList()
             : [];
       });
     } catch (_) {
+      // Login must remain available even if announcements cannot be loaded.
     } finally {
       if (mounted) setState(() => _isLoadingLoginAnnouncements = false);
     }
@@ -153,8 +154,7 @@ class _LoginScreenState extends State<LoginScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFF2E354F),
               borderRadius: BorderRadius.circular(12),
-              border:
-                  Border.all(color: const Color(0xFF8B5CF6).withOpacity(0.5)),
+              border: Border.all(color: const Color(0xFF8B5CF6).withOpacity(0.5)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -171,8 +171,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 if (text.isNotEmpty) ...[
                   if (imageUrl.isNotEmpty) const SizedBox(height: 8),
-                  Text(text,
-                      textAlign: TextAlign.right,
+                  Text(text, textAlign: TextAlign.right,
                       style: const TextStyle(color: Colors.white, height: 1.5)),
                 ],
                 if (targetUrl.isNotEmpty)
@@ -180,8 +179,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     padding: EdgeInsets.only(top: 6),
                     child: Align(
                       alignment: Alignment.centerLeft,
-                      child: Icon(Icons.open_in_new,
-                          size: 16, color: Color(0xFFB9C5FF)),
+                      child: Icon(Icons.open_in_new, size: 16, color: Color(0xFFB9C5FF)),
                     ),
                   ),
               ],
@@ -198,7 +196,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (Platform.isAndroid) {
         final info = await deviceInfo.androidInfo;
-        final model = info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
+        final model =
+            info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
         return model.isNotEmpty ? model : 'ANDROID_${info.id}';
       }
 
@@ -386,6 +385,249 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
+class SplitTunnelingScreen extends StatefulWidget {
+  const SplitTunnelingScreen({super.key});
+
+  @override
+  State<SplitTunnelingScreen> createState() => _SplitTunnelingScreenState();
+}
+
+class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
+  static const Color _background = Color(0xFF1B1D29);
+  static const Color _surface = Color(0xFF222536);
+  static const Color _accent = Color(0xFF8B5CF6);
+
+  bool _loading = true;
+  bool _enabled = false;
+  String _search = '';
+  List<AppInfo> _apps = [];
+  Set<String> _selectedPackages = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettingsAndApps();
+  }
+
+  Future<void> _loadSettingsAndApps() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final enabled = prefs.getBool('split_tunneling_enabled') ?? false;
+      final selected =
+          prefs.getStringList('split_tunneling_selected')?.toSet() ?? <String>{};
+      final apps = await InstalledApps.getInstalledApps(
+        excludeSystemApps: false,
+        excludeNonLaunchableApps: true,
+        withIcon: true,
+        detectPlatformType: false,
+      );
+      apps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      if (!mounted) return;
+      setState(() {
+        _enabled = enabled;
+        _selectedPackages = selected;
+        _apps = apps;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطا در دریافت برنامه‌های نصب‌شده: $e')),
+      );
+    }
+  }
+
+  Future<void> _save() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('split_tunneling_enabled', _enabled);
+    await prefs.setStringList(
+      'split_tunneling_selected',
+      _selectedPackages.toList(),
+    );
+  }
+
+  Future<void> _toggleApp(String packageName, bool selected) async {
+    setState(() {
+      if (selected) {
+        _selectedPackages.add(packageName);
+      } else {
+        _selectedPackages.remove(packageName);
+      }
+    });
+    await _save();
+  }
+
+  Future<void> _toggleFeature(bool value) async {
+    setState(() => _enabled = value);
+    await _save();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filteredApps = _apps.where((app) {
+      final q = _search.trim().toLowerCase();
+      return q.isEmpty || app.name.toLowerCase().contains(q) ||
+          app.packageName.toLowerCase().contains(q);
+    }).toList();
+
+    return Scaffold(
+      backgroundColor: _background,
+      appBar: AppBar(
+        backgroundColor: _background,
+        title: const Text('Split Tunneling', style: TextStyle(fontSize: 18)),
+        centerTitle: true,
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: _accent))
+          : Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2E354F),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: _accent.withOpacity(0.45)),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Color(0xFFC4B5FD)),
+                          SizedBox(width: 8),
+                          Text('راهنمای عبور برنامه‌ها از VPN',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'برنامه‌هایی که در فهرست زیر انتخاب می‌کنید از VPN استفاده می‌کنند؛ سایر برنامه‌ها از اینترنت عادی دستگاه استفاده خواهند کرد. لطفاً برنامه‌های داخلی ایران، به‌ویژه اپلیکیشن‌های بانکی، را انتخاب نکنید تا ترافیک آن‌ها از VPN عبور نکند.',
+                        style: TextStyle(height: 1.6, color: Colors.white70),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _surface,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: SwitchListTile(
+                    value: _enabled,
+                    activeColor: _accent,
+                    title: const Text('فعال‌سازی Split Tunneling'),
+                    subtitle: Text(
+                      _enabled
+                          ? 'فقط برنامه‌های انتخاب‌شده از VPN عبور می‌کنند.'
+                          : 'در حالت خاموش، همه برنامه‌ها مانند قبل از VPN استفاده می‌کنند.',
+                      style: const TextStyle(color: Colors.white60, fontSize: 12),
+                    ),
+                    onChanged: _toggleFeature,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+                  child: TextField(
+                    onChanged: (value) => setState(() => _search = value),
+                    decoration: InputDecoration(
+                      hintText: 'جست‌وجوی برنامه...',
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: _surface,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Row(
+                    children: [
+                      Text('برنامه‌ها: ${filteredApps.length}',
+                          style: const TextStyle(color: Colors.white60)),
+                      const Spacer(),
+                      Text('انتخاب‌شده: ${_selectedPackages.length}',
+                          style: const TextStyle(color: Color(0xFFC4B5FD))),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: filteredApps.isEmpty
+                      ? const Center(child: Text('برنامه‌ای پیدا نشد.'))
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+                          itemCount: filteredApps.length,
+                          separatorBuilder: (_, __) =>
+                              const Divider(height: 1, color: Colors.white10),
+                          itemBuilder: (context, index) {
+                            final app = filteredApps[index];
+                            final selected = _selectedPackages.contains(app.packageName);
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: _surface,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: CheckboxListTile(
+                                value: selected,
+                                activeColor: _accent,
+                                controlAffinity: ListTileControlAffinity.leading,
+                                onChanged: _enabled
+                                    ? (value) => _toggleApp(app.packageName, value ?? false)
+                                    : null,
+                                secondary: app.icon != null
+                                    ? Image.memory(app.icon!, width: 36, height: 36,
+                                        errorBuilder: (_, __, ___) =>
+                                            const Icon(Icons.android, size: 32))
+                                    : const Icon(Icons.android, size: 32),
+                                title: Text(app.name, maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
+                                subtitle: Text(app.packageName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        color: Colors.white38, fontSize: 10)),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _accent,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('تنظیمات ذخیره شد؛ برای اعمال آن‌ها VPN را قطع و دوباره وصل کنید.'),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.check),
+                        label: const Text('ذخیره و بازگشت'),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
 class ServerListScreen extends StatefulWidget {
   final String userId;
 
@@ -419,7 +661,7 @@ class _ServerListScreenState extends State<ServerListScreen>
   String? _deviceId;
 
   Map<String, dynamic>? _userData;
-  List> _announcementData = [];
+  List<Map<String, dynamic>> _announcementData = [];
 
   int _lastSessionUpload = 0;
   int _lastSessionDownload = 0;
@@ -466,9 +708,11 @@ class _ServerListScreenState extends State<ServerListScreen>
 
         if (Platform.isAndroid) {
           final info = await deviceInfo.androidInfo;
-          final model = info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
+          final model =
+              info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
 
-          _deviceId = model.isNotEmpty ? model : 'ANDROID_${info.id}';
+          _deviceId =
+              model.isNotEmpty ? model : 'ANDROID_${info.id}';
         } else if (Platform.isIOS) {
           final info = await deviceInfo.iosInfo;
           _deviceId = info.model;
@@ -579,7 +823,7 @@ class _ServerListScreenState extends State<ServerListScreen>
       if (mounted && data is List) {
         setState(() {
           _announcementData = data
-              .whereType()
+              .whereType<Map>()
               .map((item) => Map<String, dynamic>.from(item))
               .where((item) => _isTruthy(item['enabled']))
               .toList();
@@ -610,7 +854,9 @@ class _ServerListScreenState extends State<ServerListScreen>
             double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0;
         final usedBytes =
             int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
-        final maxBytes = maxGb > 0 ? maxGb * 1024 * 1024 * 1024 : 0.0;
+        final maxBytes = maxGb > 0
+            ? maxGb * 1024 * 1024 * 1024
+            : 0.0;
 
         if (maxGb > 0 && usedBytes >= maxBytes) {
           await _logoutUser('حجم مصرفی مجاز شما به پایان رسید.');
@@ -697,7 +943,8 @@ class _ServerListScreenState extends State<ServerListScreen>
           double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0;
 
       if (maxGb > 0) {
-        final usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
+        final usedGb =
+            _accumulatedUsedBytes / (1024 * 1024 * 1024);
 
         if (usedGb >= maxGb) {
           await _logoutUser('حجم مصرفی مجاز شما به پایان رسید.');
@@ -938,7 +1185,8 @@ class _ServerListScreenState extends State<ServerListScreen>
       final rawValue = eq >= 0 ? part.substring(eq + 1) : '';
 
       try {
-        result[Uri.decodeComponent(rawKey)] = Uri.decodeComponent(rawValue);
+        result[Uri.decodeComponent(rawKey)] =
+            Uri.decodeComponent(rawValue);
       } catch (_) {
         result[rawKey] = rawValue;
       }
@@ -1004,7 +1252,8 @@ class _ServerListScreenState extends State<ServerListScreen>
             : <String, dynamic>{};
 
         final sni = _firstQueryValue(rawQuery, ['sni', 'serverName']);
-        final fingerprint = _firstQueryValue(rawQuery, ['fp', 'fingerprint']);
+        final fingerprint =
+            _firstQueryValue(rawQuery, ['fp', 'fingerprint']);
         final alpn = _firstQueryValue(rawQuery, ['alpn']);
 
         if (sni.isNotEmpty) tls['serverName'] = sni;
@@ -1047,8 +1296,10 @@ class _ServerListScreenState extends State<ServerListScreen>
             : <String, dynamic>{};
 
         final sni = _firstQueryValue(rawQuery, ['sni', 'serverName']);
-        final fingerprint = _firstQueryValue(rawQuery, ['fp', 'fingerprint']);
-        final publicKey = _firstQueryValue(rawQuery, ['pbk', 'publicKey']);
+        final fingerprint =
+            _firstQueryValue(rawQuery, ['fp', 'fingerprint']);
+        final publicKey =
+            _firstQueryValue(rawQuery, ['pbk', 'publicKey']);
         final shortId = _firstQueryValue(rawQuery, ['sid', 'shortId']);
         final spiderX = _firstQueryValue(rawQuery, ['spx', 'spiderX']);
         final mldsa = _firstQueryValue(
@@ -1072,6 +1323,7 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
   }
 
+  // تنظیمات بیس کانفیگ به همراه قوانین Routing جهت دور زدن تونل برای پنل مدیریت (هاست ایران)
   Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
     if (outbound is Map && !outbound.containsKey('tag')) {
       outbound['tag'] = 'proxy';
@@ -1093,7 +1345,10 @@ class _ServerListScreenState extends State<ServerListScreen>
       ],
       'outbounds': [
         outbound,
-        {'protocol': 'freedom', 'tag': 'direct'}
+        {
+          'protocol': 'freedom',
+          'tag': 'direct'
+        }
       ],
       'routing': {
         'domainStrategy': 'AsIs',
@@ -1112,20 +1367,24 @@ class _ServerListScreenState extends State<ServerListScreen>
     };
   }
 
+  // Ensure API calls to the Iranian hosting panel bypass the proxy tunnel.
+  // Xray routing is hostname-based (not URL-path-based), so this applies to
+  // the whole socialmedia-ad.ir host, including /index.php.
   Map<String, dynamic> _applyApiDirectRouting(Map<String, dynamic> source) {
     final config = Map<String, dynamic>.from(source);
 
     final rawOutbounds = config['outbounds'];
     final outbounds = rawOutbounds is List
         ? rawOutbounds
-            .whereType()
+            .whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item))
             .toList()
-        : >[];
+        : <Map<String, dynamic>>[];
 
     String? directTag;
     for (final outbound in outbounds) {
-      if (outbound['protocol'] == 'freedom' && outbound['tag'] == 'direct') {
+      if (outbound['protocol'] == 'freedom' &&
+          outbound['tag'] == 'direct') {
         directTag = 'direct';
         break;
       }
@@ -1154,9 +1413,10 @@ class _ServerListScreenState extends State<ServerListScreen>
     }
     config['outbounds'] = outbounds;
 
+    // Domain routing for HTTPS needs TLS/HTTP sniffing on the inbound.
     final rawInbounds = config['inbounds'];
     if (rawInbounds is List) {
-      config['inbounds'] = rawInbounds.whereType().map((item) {
+      config['inbounds'] = rawInbounds.whereType<Map>().map((item) {
         final inbound = Map<String, dynamic>.from(item);
         final rawSniffing = inbound['sniffing'];
         final sniffing = rawSniffing is Map
@@ -1182,12 +1442,13 @@ class _ServerListScreenState extends State<ServerListScreen>
         : <String, dynamic>{};
     final rawRules = routing['rules'];
     final rules = rawRules is List
-        ? rawRules
-            .whereType()
+        ? rawRules.whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item))
             .toList()
-        : >[];
+        : <Map<String, dynamic>>[];
 
+    // Remove only our own exact-host rule before reinserting it first,
+    // ensuring existing catch-all/proxy rules cannot shadow the bypass.
     rules.removeWhere((rule) {
       final domains = rule['domain'];
       return rule['type'] == 'field' &&
@@ -1292,14 +1553,13 @@ class _ServerListScreenState extends State<ServerListScreen>
       final userInfo = Uri.decodeComponent(uri.userInfo);
 
       if (serverHost.isEmpty || userInfo.isEmpty) {
-        throw const FormatException(
-            'WebSocket config has no server or user ID');
+        throw const FormatException('WebSocket config has no server or user ID');
       }
 
-      final transportHostValue =
-          _firstQueryValue(query, ['host', 'authority']);
-      final transportHost =
-          transportHostValue.isNotEmpty ? transportHostValue : serverHost;
+      final transportHostValue = _firstQueryValue(query, ['host', 'authority']);
+      final transportHost = transportHostValue.isNotEmpty
+          ? transportHostValue
+          : serverHost;
       final pathValue = _firstQueryValue(query, ['path']);
       final path = pathValue.isNotEmpty ? pathValue : '/';
       final wsSecurity = security.isEmpty ? 'none' : security;
@@ -1332,9 +1592,7 @@ class _ServerListScreenState extends State<ServerListScreen>
               {
                 'id': userInfo,
                 'alterId': int.tryParse(query['aid'] ?? '0') ?? 0,
-                'security': _firstQueryValue(query,
-                            ['scy', 'securityMethod'])
-                        .isNotEmpty
+                'security': _firstQueryValue(query, ['scy', 'securityMethod']).isNotEmpty
                     ? _firstQueryValue(query, ['scy', 'securityMethod'])
                     : 'auto',
               },
@@ -1349,8 +1607,7 @@ class _ServerListScreenState extends State<ServerListScreen>
             'users': [
               {
                 'id': userInfo,
-                'encryption': _firstQueryValue(query, ['encryption'])
-                        .isNotEmpty
+                'encryption': _firstQueryValue(query, ['encryption']).isNotEmpty
                     ? _firstQueryValue(query, ['encryption'])
                     : 'none',
                 if (_firstQueryValue(query, ['flow']).isNotEmpty)
@@ -1480,8 +1737,10 @@ class _ServerListScreenState extends State<ServerListScreen>
         ];
       }
 
-      final stream = outbound['streamSettings'] as Map<String, dynamic>;
-      final xhttp = stream['xhttpSettings'] as Map<String, dynamic>;
+      final stream =
+          outbound['streamSettings'] as Map<String, dynamic>;
+      final xhttp =
+          stream['xhttpSettings'] as Map<String, dynamic>;
 
       final extra = query['extra'];
       if (extra != null && extra.trim().isNotEmpty) {
@@ -1494,7 +1753,8 @@ class _ServerListScreenState extends State<ServerListScreen>
         final tls = <String, dynamic>{};
 
         final sni = _firstQueryValue(query, ['sni', 'serverName']);
-        final fingerprint = _firstQueryValue(query, ['fp', 'fingerprint']);
+        final fingerprint =
+            _firstQueryValue(query, ['fp', 'fingerprint']);
         final alpn = _firstQueryValue(query, ['alpn']);
         final ech = _firstQueryValue(query, ['echConfigList', 'ech']);
         final vcn = _firstQueryValue(
@@ -1521,20 +1781,22 @@ class _ServerListScreenState extends State<ServerListScreen>
       } else if (security == 'reality') {
         final reality = <String, dynamic>{
           'show': false,
-          'serverName':
-              _firstQueryValue(query, ['sni', 'serverName']).isNotEmpty
-                  ? _firstQueryValue(query, ['sni', 'serverName'])
-                  : transportHost,
+          'serverName': _firstQueryValue(query, ['sni', 'serverName'])
+                  .isNotEmpty
+              ? _firstQueryValue(query, ['sni', 'serverName'])
+              : transportHost,
           'fingerprint':
               _firstQueryValue(query, ['fp', 'fingerprint']).isNotEmpty
                   ? _firstQueryValue(query, ['fp', 'fingerprint'])
                   : 'chrome',
         };
 
-        final publicKey = _firstQueryValue(query, ['pbk', 'publicKey']);
+        final publicKey =
+            _firstQueryValue(query, ['pbk', 'publicKey']);
         final shortId = _firstQueryValue(query, ['sid', 'shortId']);
         final spiderX = _firstQueryValue(query, ['spx', 'spiderX']);
-        final mldsa = _firstQueryValue(query, ['pqv', 'mldsa65Verify']);
+        final mldsa =
+            _firstQueryValue(query, ['pqv', 'mldsa65Verify']);
 
         if (publicKey.isNotEmpty) reality['publicKey'] = publicKey;
         if (shortId.isNotEmpty) reality['shortId'] = shortId;
@@ -1707,31 +1969,102 @@ class _ServerListScreenState extends State<ServerListScreen>
 
       final configJson = _parseConfigToJson(rawUrl);
 
-      final remark = (selectedConfig['name'] ?? 'Xray Server')
-              .toString()
-              .trim()
-              .isNotEmpty
+      // Use the name from the admin panel/app list for the Android VPN
+      // foreground notification. The URL's #remark may still contain the
+      // old name after an admin renames a config, so do not override this
+      // value with V2ray.parseFromURL(...).remark.
+      final remark = (selectedConfig['name'] ?? 'Xray Server').toString().trim().isNotEmpty
           ? (selectedConfig['name'] ?? 'Xray Server').toString().trim()
           : 'Xray Server';
 
-      // خواندن برنامه‌های انتخاب شده برای Split Tunneling از SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      final blockedAppsList = prefs.getStringList('split_tunneling_apps') ?? [];
+      debugPrint('V2Ray: starting profile="$remark"');
+      final debugUri = Uri.tryParse(_cleanUrl(rawUrl));
+      final debugNetwork = debugUri == null
+          ? ''
+          : _firstQueryValue(
+              _rawQueryParametersPreservePlus(debugUri),
+              const ['type', 'network'],
+            );
+      debugPrint(
+        'V2Ray: parsed scheme=${debugUri?.scheme}, '
+        'host=${debugUri?.host}, port=${debugUri?.port}, '
+        'network=$debugNetwork',
+      );
+
+      // Split tunneling is implemented using the plugin's blockedApps list.
+      // Android's VPN API excludes these packages from the VPN tunnel, so we
+      // pass every installed package except the apps explicitly selected by
+      // the user. When the feature is disabled, behavior remains unchanged.
+      List<String>? blockedApps;
+      if (Platform.isAndroid) {
+        final prefs = await SharedPreferences.getInstance();
+        final splitEnabled = prefs.getBool('split_tunneling_enabled') ?? false;
+        if (splitEnabled) {
+          final selectedPackages =
+              prefs.getStringList('split_tunneling_selected')?.toSet() ?? <String>{};
+          final installedApps = await InstalledApps.getInstalledApps(
+            excludeSystemApps: false,
+            excludeNonLaunchableApps: false,
+            withIcon: false,
+            detectPlatformType: false,
+          );
+          blockedApps = installedApps
+              .map((app) => app.packageName)
+              .where((packageName) =>
+                  packageName.isNotEmpty && !selectedPackages.contains(packageName))
+              .toSet()
+              .toList();
+          debugPrint(
+            'Split tunneling enabled: ${selectedPackages.length} allowed, '
+            '${blockedApps.length} excluded from VPN',
+          );
+        }
+      }
 
       await flutterV2ray.startV2Ray(
         remark: remark,
         config: configJson,
+        blockedApps: blockedApps,
         proxyOnly: false,
-        blockedApps: blockedAppsList,
       );
 
       await Future<void>.delayed(const Duration(seconds: 4));
       if (!mounted || _userWantsDisconnect) return;
 
-      setState(() => _isConnectingProcess = false);
+      if (!_isConnected) {
+        setState(() => _isConnectingProcess = false);
+        debugPrint('V2Ray: no CONNECTED status after 4 seconds; collecting core logs.');
+        try {
+          final logs = await flutterV2ray.getLogs();
+          for (final line in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
+            debugPrint('[XRAY_CORE] $line');
+          }
+        } catch (logError) {
+          debugPrint('V2Ray: unable to read core logs: $logError');
+        }
+
+        if (mounted && !_isConnected) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('هسته اتصال را تأیید نکرد. لاگ‌های [XRAY_CORE] را از Debug Console بررسی کنید.'),
+              duration: Duration(seconds: 6),
+            ),
+          );
+        }
+      } else {
+        setState(() => _isConnectingProcess = false);
+      }
     } catch (e, stackTrace) {
       debugPrint('V2Ray start failed: $e');
       debugPrint('$stackTrace');
+      try {
+        final logs = await flutterV2ray.getLogs();
+        for (final line in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
+          debugPrint('[XRAY_CORE] $line');
+        }
+      } catch (logError) {
+        debugPrint('V2Ray: unable to read core logs: $logError');
+      }
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1754,11 +2087,13 @@ class _ServerListScreenState extends State<ServerListScreen>
     if (value.startsWith('vless://')) return 'VLESS';
     if (value.startsWith('vmess://')) return 'VMESS';
     if (value.startsWith('trojan://')) return 'TROJAN';
-    if (value.startsWith('ss://') || value.startsWith('shadowsocks://')) {
+    if (value.startsWith('ss://') ||
+        value.startsWith('shadowsocks://')) {
       return 'SS';
     }
     if (value.startsWith('socks://')) return 'SOCKS';
-    if (value.startsWith('hysteria2://') || value.startsWith('hy2://')) {
+    if (value.startsWith('hysteria2://') ||
+        value.startsWith('hy2://')) {
       return 'HY2';
     }
     if (value.startsWith('hysteria://')) return 'HYSTERIA';
@@ -1796,6 +2131,8 @@ class _ServerListScreenState extends State<ServerListScreen>
                   } catch (_) {}
                 },
           child: Container(
+            // Match the horizontal width and alignment of the config cards
+            // (ListView horizontal padding: 12 and card bottom margin: 10).
             width: double.infinity,
             margin: const EdgeInsets.only(
               left: 12,
@@ -1905,19 +2242,6 @@ class _ServerListScreenState extends State<ServerListScreen>
         ),
         centerTitle: true,
         actions: [
-          // دکمه ورود به صفحه Split Tunneling (تفکیک برنامه‌ها)
-          IconButton(
-            icon: const Icon(Icons.apps_rounded, color: Color(0xFFC4B5FD)),
-            tooltip: 'تفکیک برنامه‌ها (Split Tunneling)',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const SplitTunnelingScreen(),
-                ),
-              );
-            },
-          ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.redAccent),
             onPressed: () {
@@ -1945,6 +2269,17 @@ class _ServerListScreenState extends State<ServerListScreen>
                       ),
                     ),
                   ],
+                ),
+              );
+            },
+          ),
+          IconButton(
+            tooltip: 'Split Tunneling',
+            icon: const Icon(Icons.menu, color: Colors.white70),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SplitTunnelingScreen(),
                 ),
               );
             },
@@ -2243,127 +2578,6 @@ class _ServerListScreenState extends State<ServerListScreen>
           ],
         ),
       ),
-    );
-  }
-}
-
-// ==========================================
-// صفحه مدیریت تفکیک برنامه‌ها (Split Tunneling)
-// ==========================================
-class SplitTunnelingScreen extends StatefulWidget {
-  const SplitTunnelingScreen({super.key});
-
-  @override
-  State<SplitTunnelingScreen> createState() => _SplitTunnelingScreenState();
-}
-
-class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
-  // لیست نمونه از برنامه‌های پرکاربرد با پکیج‌نیم استاندارد آن‌ها
-  final List> _commonApps = [
-    {'name': 'تلگرام (Telegram)', 'package': 'org.telegram.messenger'},
-    {'name': 'اینستاگرام (Instagram)', 'package': 'com.instagram.android'},
-    {'name': 'واتساپ (WhatsApp)', 'package': 'com.whatsapp'},
-    {'name': 'یوتیوب (YouTube)', 'package': 'com.google.android.youtube'},
-    {'name': 'گوگل کروم (Chrome)', 'package': 'com.android.chrome'},
-    {'name': 'ایتا (Eitaa)', 'package': 'ir.eitaa.messenger'},
-    {'name': 'روبیکا (Rubika)', 'package': 'app.rbk.android'},
-    {'name': 'توییتر / ایکس (X/Twitter)', 'package': 'com.twitter.android'},
-  ];
-
-  final Set<String> _selectedPackages = {};
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadSavedSettings();
-  }
-
-  Future<void> _loadSavedSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getStringList('split_tunneling_apps') ?? [];
-    if (mounted) {
-      setState(() {
-        _selectedPackages.addAll(saved);
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _saveSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(
-        'split_tunneling_apps', _selectedPackages.toList());
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('تنظیمات Split Tunneling ذخیره شد.'),
-        backgroundColor: Colors.green,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('تفکیک برنامه‌ها (Split Tunneling)'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.save_rounded),
-            tooltip: 'ذخیره',
-            onPressed: _saveSettings,
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  color: const Color(0xFF222536),
-                  child: const Text(
-                    'برنامه‌هایی که تیک می‌زنید از VPN عبور نخواهند کرد (مستقیماً به اینترنت آزاد/ملی متصل می‌شوند).',
-                    style: TextStyle(color: Colors.white70, fontSize: 13),
-                    textAlign: TextAlign.right,
-                  ),
-                ),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: _commonApps.length,
-                    itemBuilder: (context, index) {
-                      final app = _commonApps[index];
-                      final packageName = app['package']!;
-                      final appName = app['name']!;
-                      final isChecked = _selectedPackages.contains(packageName);
-
-                      return CheckboxListTile(
-                        title: Text(appName,
-                            style: const TextStyle(color: Colors.white)),
-                        subtitle: Text(packageName,
-                            style: const TextStyle(
-                                color: Colors.white54, fontSize: 11)),
-                        value: isChecked,
-                        activeColor: const Color(0xFF8B5CF6),
-                        checkColor: Colors.white,
-                        onChanged: (bool? value) {
-                          setState(() {
-                            if (value == true) {
-                              _selectedPackages.add(packageName);
-                            } else {
-                              _selectedPackages.remove(packageName);
-                            }
-                          });
-                          _saveSettings();
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
     );
   }
 }
