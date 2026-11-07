@@ -2235,9 +2235,11 @@ class _ServerListScreenState extends State<ServerListScreen>
         : 0.0;
 
     return Scaffold(
-      appBar: Directionality(
-        textDirection: TextDirection.ltr,
-        child: AppBar(
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: AppBar(
         automaticallyImplyLeading: false,
         leading: Builder(
           builder: (context) => IconButton(
@@ -2347,7 +2349,8 @@ class _ServerListScreenState extends State<ServerListScreen>
             },
           ),
         ],
-      ),
+          ),
+        ),
       ),
       body: Column(
         children: [
