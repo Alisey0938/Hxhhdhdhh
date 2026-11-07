@@ -24,13 +24,14 @@ class MyApp extends StatelessWidget {
       title: 'HUSKY VPN',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF1B1D29),
+        scaffoldBackgroundColor: const Color(0xFF0A0C14),
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF8B9BB4),
-          surface: Color(0xFF222536),
+          primary: Color(0xFF00F0FF),
+          secondary: Color(0xFFFF007F),
+          surface: Color(0xFF131722),
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1B1D29),
+          backgroundColor: Color(0xFF0A0C14),
           elevation: 0,
         ),
       ),
@@ -73,7 +74,7 @@ class _AuthCheckScreenState extends State<AuthCheckScreen> {
   Widget build(BuildContext context) {
     return const Scaffold(
       body: Center(
-        child: CircularProgressIndicator(color: Color(0xFF8B9BB4)),
+        child: CircularProgressIndicator(color: Color(0xFF00F0FF)),
       ),
     );
   }
@@ -93,8 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
 
   bool _isLoading = false;
-  bool _isLoadingLoginAnnouncements = true;
-  List<Map<String, dynamic>> _loginAnnouncements = [];
+  List> _loginAnnouncements = [];
 
   @override
   void initState() {
@@ -113,19 +113,16 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() {
         _loginAnnouncements = data is List
             ? data
-                .whereType<Map>()
+                .whereType()
                 .map((item) => Map<String, dynamic>.from(item))
-                .where((item) => item['enabled'] == 1 ||
+                .where((item) =>
+                    item['enabled'] == 1 ||
                     item['enabled'] == true ||
                     item['enabled']?.toString() == '1')
                 .toList()
             : [];
       });
-    } catch (_) {
-      // Login must remain available even if announcements cannot be loaded.
-    } finally {
-      if (mounted) setState(() => _isLoadingLoginAnnouncements = false);
-    }
+    } catch (_) {}
   }
 
   Widget _buildLoginAnnouncements() {
@@ -150,18 +147,18 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Container(
             width: double.infinity,
             margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFF2E354F),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF8B5CF6).withOpacity(0.5)),
+              color: const Color(0xFF181D2E),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF00F0FF).withOpacity(0.3)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (imageUrl.isNotEmpty)
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(10),
                     child: Image.network(
                       imageUrl,
                       width: double.infinity,
@@ -174,14 +171,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   Text(text, textAlign: TextAlign.right,
                       style: const TextStyle(color: Colors.white, height: 1.5)),
                 ],
-                if (targetUrl.isNotEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 6),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Icon(Icons.open_in_new, size: 16, color: Color(0xFFB9C5FF)),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -193,20 +182,16 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<String> _getDeviceId() async {
     try {
       final deviceInfo = DeviceInfoPlugin();
-
       if (Platform.isAndroid) {
         final info = await deviceInfo.androidInfo;
-        final model =
-            info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
+        final model = info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
         return model.isNotEmpty ? model : 'ANDROID_${info.id}';
       }
-
       if (Platform.isIOS) {
         final info = await deviceInfo.iosInfo;
         return info.model;
       }
     } catch (_) {}
-
     return 'DEVICE_${DateTime.now().millisecondsSinceEpoch}';
   }
 
@@ -216,9 +201,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (username.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('لطفاً نام کاربری و رمز عبور را وارد کنید.'),
-        ),
+        const SnackBar(content: Text('لطفاً نام کاربری و رمز عبور را وارد کنید.')),
       );
       return;
     }
@@ -227,7 +210,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final deviceId = await _getDeviceId();
-
       final response = await http
           .post(
             Uri.parse('$apiBase?action=user_login'),
@@ -246,12 +228,10 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       final dynamic data = json.decode(response.body);
-
       if (data is! Map || data['status'] != 'success') {
         _showError(
           data is Map
-              ? (data['message']?.toString() ??
-                  'نام کاربری یا رمز عبور اشتباه است.')
+              ? (data['message']?.toString() ?? 'نام کاربری یا رمز عبور اشتباه است.')
               : 'پاسخ سرور معتبر نیست.',
         );
         return;
@@ -265,7 +245,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final userId = userData['id'].toString();
       final prefs = await SharedPreferences.getInstance();
-
       await prefs.setString('user_id', userId);
       await prefs.setString('device_id', deviceId);
 
@@ -273,9 +252,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => ServerListScreen(userId: userId),
-        ),
+        MaterialPageRoute(builder: (_) => ServerListScreen(userId: userId)),
       );
     } catch (e) {
       _showError('خطا در برقراری ارتباط: $e');
@@ -287,10 +264,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void _showError(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.redAccent,
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
     );
   }
 
@@ -310,32 +284,41 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
-                Icons.vpn_key_rounded,
-                size: 80,
-                color: Color(0xFF8B9BB4),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF00F0FF).withOpacity(0.1),
+                  border: Border.all(color: const Color(0xFF00F0FF), width: 2),
+                ),
+                child: const Icon(Icons.bolt, size: 50, color: Color(0xFF00F0FF)),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               const Text(
                 'HUSKY VPN',
                 style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.5,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2.0,
+                  color: Colors.white,
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 32),
               _buildLoginAnnouncements(),
-              const SizedBox(height: 8),
               TextField(
                 controller: _usernameController,
                 decoration: InputDecoration(
                   labelText: 'نام کاربری',
+                  labelStyle: const TextStyle(color: Colors.white60),
                   filled: true,
-                  fillColor: const Color(0xFF222536),
+                  fillColor: const Color(0xFF131722),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: Color(0xFF00F0FF), width: 1.5),
                   ),
                 ),
               ),
@@ -345,31 +328,43 @@ class _LoginScreenState extends State<LoginScreen> {
                 obscureText: true,
                 decoration: InputDecoration(
                   labelText: 'رمز عبور',
+                  labelStyle: const TextStyle(color: Colors.white60),
                   filled: true,
-                  fillColor: const Color(0xFF222536),
+                  fillColor: const Color(0xFF131722),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: Color(0xFF00F0FF), width: 1.5),
                   ),
                 ),
                 onSubmitted: (_) => _isLoading ? null : _login(),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
               SizedBox(
                 width: double.infinity,
-                height: 48,
+                height: 52,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF3B4261),
+                    backgroundColor: const Color(0xFF00F0FF),
+                    foregroundColor: const Color(0xFF0A0C14),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
+                    elevation: 6,
+                    shadowColor: const Color(0xFF00F0FF).withOpacity(0.4),
                   ),
                   onPressed: _isLoading ? null : _login,
                   child: _isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(color: Color(0xFF0A0C14), strokeWidth: 2.5),
+                        )
                       : const Text(
-                          'ورود',
+                          'ورود به سیستم',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -393,9 +388,9 @@ class SplitTunnelingScreen extends StatefulWidget {
 }
 
 class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
-  static const Color _background = Color(0xFF1B1D29);
-  static const Color _surface = Color(0xFF222536);
-  static const Color _accent = Color(0xFF8B5CF6);
+  static const Color _background = Color(0xFF0A0C14);
+  static const Color _surface = Color(0xFF131722);
+  static const Color _accent = Color(0xFF00F0FF);
 
   bool _loading = true;
   bool _enabled = false;
@@ -467,168 +462,154 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
   Widget build(BuildContext context) {
     final filteredApps = _apps.where((app) {
       final q = _search.trim().toLowerCase();
-      return q.isEmpty || app.name.toLowerCase().contains(q) ||
+      return q.isEmpty ||
+          app.name.toLowerCase().contains(q) ||
           app.packageName.toLowerCase().contains(q);
     }).toList();
 
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-      backgroundColor: _background,
-      appBar: AppBar(
         backgroundColor: _background,
-        title: const Text('عبور انتخابی برنامه‌ها', style: TextStyle(fontSize: 18)),
-        centerTitle: true,
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: _accent))
-          : Column(
-              children: [
-                Container(
-                  margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2E354F),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: _accent.withOpacity(0.45)),
-                  ),
-                  child: const Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.info_outline, color: Color(0xFFC4B5FD)),
-                          SizedBox(width: 8),
-                          Text('راهنمای برنامه‌های مستثنا از VPN', textAlign: TextAlign.right,
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'برنامه‌هایی را که نمی‌خواهید از VPN استفاده کنند، در فهرست زیر انتخاب کنید. ترافیک این برنامه‌ها از اینترنت عادی دستگاه عبور می‌کند و سایر برنامه‌ها از VPN استفاده خواهند کرد. لطفاً برنامه‌های ایرانی و داخلی، به‌خصوص همراه‌بانک‌ها، اپلیکیشن‌های بانکی، پرداخت و خدمات دولتی را انتخاب کنید تا از VPN عبور نکنند.',
-                        textAlign: TextAlign.right,
-                        textDirection: TextDirection.rtl,
-                        style: TextStyle(height: 1.6, color: Colors.white70),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _surface,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: SwitchListTile(
-                    value: _enabled,
-                    activeColor: _accent,
-                    title: const Text('فعال‌سازی استثناهای VPN'),
-                    subtitle: Text(
-                      _enabled
-                          ? 'برنامه‌های انتخاب‌شده از VPN استفاده نمی‌کنند.'
-                          : 'در حالت خاموش، همه برنامه‌ها از VPN استفاده می‌کنند.',
-                      style: const TextStyle(color: Colors.white60, fontSize: 12),
+        appBar: AppBar(
+          backgroundColor: _background,
+          title: const Text('عبور انتخابی برنامه‌ها', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          centerTitle: true,
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator(color: _accent))
+            : Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: _surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: _accent.withOpacity(0.3)),
                     ),
-                    onChanged: _toggleFeature,
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
-                  child: TextField(
-                    onChanged: (value) => setState(() => _search = value),
-                    decoration: InputDecoration(
-                      hintText: 'جست‌وجوی برنامه...',
-                      hintTextDirection: TextDirection.rtl,
-                      prefixIcon: const Icon(Icons.search),
-                      filled: true,
-                      fillColor: _surface,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.info_outline, color: _accent),
+                            SizedBox(width: 8),
+                            Text('راهنمای برنامه‌های مستثنا', textAlign: TextAlign.right,
+                                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                          ],
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'برنامه‌هایی که انتخاب می‌کنید از تونل VPN عبور نکرده و با اینترنت عادی کار خواهند کرد (مناسب برای همراه‌بانک‌ها و خدمات داخلی).',
+                          textAlign: TextAlign.right,
+                          style: TextStyle(height: 1.5, color: Colors.white70, fontSize: 12),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  child: Row(
-                    children: [
-                      Text('تعداد برنامه‌ها: ${filteredApps.length}', textDirection: TextDirection.rtl,
-                          style: const TextStyle(color: Colors.white60)),
-                      const Spacer(),
-                      Text('برنامه‌های مستثنا: ${_selectedPackages.length}', textDirection: TextDirection.rtl,
-                          style: const TextStyle(color: Color(0xFFC4B5FD))),
-                    ],
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _surface,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: SwitchListTile(
+                      value: _enabled,
+                      activeColor: _accent,
+                      title: const Text('فعال‌سازی استثناهای VPN'),
+                      subtitle: Text(
+                        _enabled ? 'مستثنی‌سازی فعال است' : 'همه برنامه‌ها از VPN استفاده می‌کنند',
+                        style: const TextStyle(color: Colors.white54, fontSize: 11),
+                      ),
+                      onChanged: _toggleFeature,
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: filteredApps.isEmpty
-                      ? const Center(child: Text('برنامه‌ای پیدا نشد.'))
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-                          itemCount: filteredApps.length,
-                          separatorBuilder: (_, __) =>
-                              const Divider(height: 1, color: Colors.white10),
-                          itemBuilder: (context, index) {
-                            final app = filteredApps[index];
-                            final selected = _selectedPackages.contains(app.packageName);
-                            return Container(
-                              decoration: BoxDecoration(
-                                color: _surface,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: CheckboxListTile(
-                                value: selected,
-                                activeColor: _accent,
-                                controlAffinity: ListTileControlAffinity.leading,
-                                onChanged: _enabled
-                                    ? (value) => _toggleApp(app.packageName, value ?? false)
-                                    : null,
-                                secondary: app.icon != null
-                                    ? Image.memory(app.icon!, width: 36, height: 36,
-                                        errorBuilder: (_, __, ___) =>
-                                            const Icon(Icons.android, size: 32))
-                                    : const Icon(Icons.android, size: 32),
-                                title: Text(app.name, maxLines: 1,
-                                    overflow: TextOverflow.ellipsis),
-                                subtitle: Text(app.packageName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        color: Colors.white38, fontSize: 10)),
-                              ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+                    child: TextField(
+                      onChanged: (value) => setState(() => _search = value),
+                      decoration: InputDecoration(
+                        hintText: 'جست‌وجوی برنامه...',
+                        hintTextDirection: TextDirection.rtl,
+                        prefixIcon: const Icon(Icons.search, color: Colors.white54),
+                        filled: true,
+                        fillColor: _surface,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: filteredApps.isEmpty
+                        ? const Center(child: Text('برنامه‌ای پیدا نشد.', style: TextStyle(color: Colors.white54)))
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                            itemCount: filteredApps.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 8),
+                            itemBuilder: (context, index) {
+                              final app = filteredApps[index];
+                              final selected = _selectedPackages.contains(app.packageName);
+                              return Container(
+                                decoration: BoxDecoration(
+                                  color: _surface,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: selected ? _accent.withOpacity(0.5) : Colors.transparent,
+                                  ),
+                                ),
+                                child: CheckboxListTile(
+                                  value: selected,
+                                  activeColor: _accent,
+                                  checkColor: _background,
+                                  controlAffinity: ListTileControlAffinity.leading,
+                                  onChanged: _enabled
+                                      ? (value) => _toggleApp(app.packageName, value ?? false)
+                                      : null,
+                                  secondary: app.icon != null
+                                      ? Image.memory(app.icon!, width: 34, height: 34,
+                                          errorBuilder: (_, __, ___) => const Icon(Icons.android, size: 30))
+                                      : const Icon(Icons.android, size: 30),
+                                  title: Text(app.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                  subtitle: Text(app.packageName, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                  SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _accent,
+                            foregroundColor: _background,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('تنظیمات ذخیره شد؛ برای اعمال تغییرات اتصال VPN را بازنشانی کنید.')),
                             );
                           },
+                          icon: const Icon(Icons.check),
+                          label: const Text('ذخیره و بازگشت', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
-                ),
-                SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _accent,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                        ),
-                        onPressed: () {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('تنظیمات ذخیره شد؛ برای اعمال آن‌ها VPN را قطع و دوباره وصل کنید.'),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.check),
-                        label: const Text('ذخیره و بازگشت'),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
       ),
     );
   }
@@ -644,13 +625,13 @@ class ServerListScreen extends StatefulWidget {
 }
 
 class _ServerListScreenState extends State<ServerListScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   static const String apiBase = 'https://socialmedia-ad.ir/index.php';
 
   late V2ray flutterV2ray;
+  late AnimationController _pulseController;
 
   List<dynamic> _configs = [];
-
   final Map<String, int> _pings = {};
   final Map<String, bool> _pingLoading = {};
 
@@ -667,7 +648,7 @@ class _ServerListScreenState extends State<ServerListScreen>
   String? _deviceId;
 
   Map<String, dynamic>? _userData;
-  List<Map<String, dynamic>> _announcementData = [];
+  List> _announcementData = [];
 
   int _lastSessionUpload = 0;
   int _lastSessionDownload = 0;
@@ -676,27 +657,28 @@ class _ServerListScreenState extends State<ServerListScreen>
 
   String _remainingTimeText = '...';
   String _coreVersion = '26.9.9';
-
   Timer? _userCheckTimer;
 
   bool _isTruthy(dynamic value) {
     if (value == null) return false;
     if (value is bool) return value;
     if (value is int) return value == 1;
-
     if (value is String) {
       final text = value.trim().toLowerCase();
       return text == 'true' || text == '1';
     }
-
     return false;
   }
 
   @override
   void initState() {
     super.initState();
-
     WidgetsBinding.instance.addObserver(this);
+    
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
 
     _initDeviceIdAndStart();
     _initV2Ray();
@@ -711,14 +693,10 @@ class _ServerListScreenState extends State<ServerListScreen>
     if (_deviceId == null || _deviceId!.isEmpty) {
       try {
         final deviceInfo = DeviceInfoPlugin();
-
         if (Platform.isAndroid) {
           final info = await deviceInfo.androidInfo;
-          final model =
-              info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
-
-          _deviceId =
-              model.isNotEmpty ? model : 'ANDROID_${info.id}';
+          final model = info.model.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
+          _deviceId = model.isNotEmpty ? model : 'ANDROID_${info.id}';
         } else if (Platform.isIOS) {
           final info = await deviceInfo.iosInfo;
           _deviceId = info.model;
@@ -726,30 +704,26 @@ class _ServerListScreenState extends State<ServerListScreen>
       } catch (_) {
         _deviceId = 'DEVICE_${DateTime.now().millisecondsSinceEpoch}';
       }
-
       _deviceId ??= 'DEVICE_${DateTime.now().millisecondsSinceEpoch}';
       await prefs.setString('device_id', _deviceId!);
     }
 
     if (!mounted) return;
-
     await _fetchUserDataAndCheck();
 
     _userCheckTimer?.cancel();
-    _userCheckTimer = Timer.periodic(
-      const Duration(minutes: 3),
-      (_) {
-        if (!mounted || _logoutInProgress) return;
-        _fetchUserDataAndCheck();
-        _fetchAnnouncement();
-      },
-    );
+    _userCheckTimer = Timer.periodic(const Duration(minutes: 3), (_) {
+      if (!mounted || _logoutInProgress) return;
+      _fetchUserDataAndCheck();
+      _fetchAnnouncement();
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _userCheckTimer?.cancel();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -765,7 +739,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     flutterV2ray = V2ray(
       onStatusChanged: (status) {
         if (!mounted) return;
-
         final state = status.state.toUpperCase();
 
         if (state == 'CONNECTED') {
@@ -774,16 +747,12 @@ class _ServerListScreenState extends State<ServerListScreen>
               _isConnected = true;
               _isConnectingProcess = false;
             });
-
             _calculateAndSaveTraffic(status.upload, status.download);
           }
-        } else if (state == 'DISCONNECTED' ||
-            state == 'STOPPED' ||
-            state == 'IDLE') {
+        } else if (state == 'DISCONNECTED' || state == 'STOPPED' || state == 'IDLE') {
           if (_trafficBaselineInitialized) {
             _calculateAndSaveTraffic(status.upload, status.download);
           }
-
           setState(() {
             _isConnected = false;
             _isConnectingProcess = false;
@@ -792,7 +761,6 @@ class _ServerListScreenState extends State<ServerListScreen>
             _trafficBaselineInitialized = false;
             _userWantsDisconnect = false;
           });
-
           _flushPendingTraffic();
         }
       },
@@ -803,15 +771,11 @@ class _ServerListScreenState extends State<ServerListScreen>
         notificationIconResourceType: 'mipmap',
         notificationIconResourceName: 'ic_launcher',
       );
-
       final version = await flutterV2ray.getCoreVersion();
-
       if (mounted && version.isNotEmpty) {
         setState(() => _coreVersion = version);
       }
-    } catch (e) {
-      debugPrint('V2Ray initialization failed: $e');
-    }
+    } catch (_) {}
   }
 
   Future<void> _fetchAnnouncement() async {
@@ -819,17 +783,13 @@ class _ServerListScreenState extends State<ServerListScreen>
       final response = await http
           .get(Uri.parse('$apiBase?action=get_app_announcements'))
           .timeout(const Duration(seconds: 15));
-
-      if (response.statusCode != 200 || response.body.trim() == 'null') {
-        return;
-      }
+      if (response.statusCode != 200 || response.body.trim() == 'null') return;
 
       final dynamic data = json.decode(response.body);
-
       if (mounted && data is List) {
         setState(() {
           _announcementData = data
-              .whereType<Map>()
+              .whereType()
               .map((item) => Map<String, dynamic>.from(item))
               .where((item) => _isTruthy(item['enabled']))
               .toList();
@@ -846,9 +806,7 @@ class _ServerListScreenState extends State<ServerListScreen>
           .get(Uri.parse('$apiBase?action=get_user&id=${widget.userId}'))
           .timeout(const Duration(seconds: 15));
 
-      if (response.statusCode != 200 || response.body.trim() == 'null') {
-        return;
-      }
+      if (response.statusCode != 200 || response.body.trim() == 'null') return;
 
       final dynamic decoded = json.decode(response.body);
       if (decoded is! Map) return;
@@ -856,13 +814,9 @@ class _ServerListScreenState extends State<ServerListScreen>
       final data = Map<String, dynamic>.from(decoded);
 
       if (!_isTruthy(data['active'])) {
-        final maxGb =
-            double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0;
-        final usedBytes =
-            int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
-        final maxBytes = maxGb > 0
-            ? maxGb * 1024 * 1024 * 1024
-            : 0.0;
+        final maxGb = double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0;
+        final usedBytes = int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
+        final maxBytes = maxGb > 0 ? maxGb * 1024 * 1024 * 1024 : 0.0;
 
         if (maxGb > 0 && usedBytes >= maxBytes) {
           await _logoutUser('حجم مصرفی مجاز شما به پایان رسید.');
@@ -873,14 +827,10 @@ class _ServerListScreenState extends State<ServerListScreen>
       }
 
       final currentDeviceId = _deviceId;
-
       if (currentDeviceId != null && currentDeviceId.isNotEmpty) {
         Map<String, dynamic> activeSessions = {};
-
         if (data['active_sessions'] is Map) {
-          activeSessions = Map<String, dynamic>.from(
-            data['active_sessions'] as Map,
-          );
+          activeSessions = Map<String, dynamic>.from(data['active_sessions'] as Map);
         }
 
         if (!activeSessions.containsKey(currentDeviceId)) {
@@ -889,12 +839,10 @@ class _ServerListScreenState extends State<ServerListScreen>
         }
 
         final session = activeSessions[currentDeviceId];
-
         activeSessions[currentDeviceId] = {
           if (session is Map) ...Map<String, dynamic>.from(session),
           'last_seen': DateTime.now().toIso8601String(),
         };
-
         data['active_sessions'] = activeSessions;
 
         await http
@@ -904,25 +852,19 @@ class _ServerListScreenState extends State<ServerListScreen>
               body: json.encode({
                 'id': widget.userId,
                 'device_id': currentDeviceId,
-                'active_sessions': {
-                  currentDeviceId: activeSessions[currentDeviceId],
-                },
+                'active_sessions': {currentDeviceId: activeSessions[currentDeviceId]},
               }),
             )
             .timeout(const Duration(seconds: 15));
       }
 
       _userData = data;
-
-      final serverUsedBytes =
-          int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
-
+      final serverUsedBytes = int.tryParse(data['used_bytes']?.toString() ?? '0') ?? 0;
       if (_accumulatedUsedBytes < serverUsedBytes) {
         _accumulatedUsedBytes = serverUsedBytes;
       }
 
       final expireAt = data['expire_at']?.toString() ?? '';
-
       if (expireAt.isNotEmpty) {
         try {
           final expireDate = DateTime.parse(expireAt);
@@ -945,38 +887,14 @@ class _ServerListScreenState extends State<ServerListScreen>
         _remainingTimeText = 'نامحدود';
       }
 
-      final maxGb =
-          double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0;
-
-      if (maxGb > 0) {
-        final usedGb =
-            _accumulatedUsedBytes / (1024 * 1024 * 1024);
-
-        if (usedGb >= maxGb) {
-          await _logoutUser('حجم مصرفی مجاز شما به پایان رسید.');
-          return;
-        }
-      }
-
       if (mounted) setState(() {});
-
-      if (_pendingTrafficBytes > 0) {
-        _flushPendingTraffic();
-      }
-    } catch (e) {
-      debugPrint('User check failed: $e');
-    }
+      if (_pendingTrafficBytes > 0) _flushPendingTraffic();
+    } catch (_) {}
   }
 
-  Future<void> _calculateAndSaveTraffic(
-    int currentUpload,
-    int currentDownload,
-  ) async {
+  Future<void> _calculateAndSaveTraffic(int currentUpload, int currentDownload) async {
     if (_userData == null) return;
-
-    final maxGb =
-        double.tryParse(_userData!['max_volume_gb']?.toString() ?? '0') ?? 0;
-
+    final maxGb = double.tryParse(_userData!['max_volume_gb']?.toString() ?? '0') ?? 0;
     if (maxGb <= 0) return;
 
     if (!_trafficBaselineInitialized) {
@@ -986,8 +904,7 @@ class _ServerListScreenState extends State<ServerListScreen>
       return;
     }
 
-    if (currentDownload < _lastSessionDownload ||
-        currentUpload < _lastSessionUpload) {
+    if (currentDownload < _lastSessionDownload || currentUpload < _lastSessionUpload) {
       _lastSessionDownload = currentDownload;
       _lastSessionUpload = currentUpload;
       return;
@@ -995,12 +912,10 @@ class _ServerListScreenState extends State<ServerListScreen>
 
     final uploadDelta = currentUpload - _lastSessionUpload;
     final downloadDelta = currentDownload - _lastSessionDownload;
-
     _lastSessionUpload = currentUpload;
     _lastSessionDownload = currentDownload;
 
     final totalDelta = uploadDelta + downloadDelta;
-
     if (totalDelta > 0) {
       _pendingTrafficBytes += totalDelta;
       await _flushPendingTraffic();
@@ -1010,14 +925,6 @@ class _ServerListScreenState extends State<ServerListScreen>
   Future<void> _flushPendingTraffic() async {
     if (_trafficUpdateInProgress || _pendingTrafficBytes <= 0) return;
     if (_userData == null) return;
-
-    final maxGb =
-        double.tryParse(_userData!['max_volume_gb']?.toString() ?? '0') ?? 0;
-
-    if (maxGb <= 0) {
-      _pendingTrafficBytes = 0;
-      return;
-    }
 
     final batch = _pendingTrafficBytes;
     _trafficUpdateInProgress = true;
@@ -1037,18 +944,12 @@ class _ServerListScreenState extends State<ServerListScreen>
 
       if (response.statusCode == 200) {
         final dynamic result = json.decode(response.body);
-
         if (result is Map && result['status'] == 'success') {
-          _pendingTrafficBytes =
-              (_pendingTrafficBytes - batch).clamp(0, 1 << 62);
-
-          final serverUsedBytes =
-              int.tryParse(result['used_bytes']?.toString() ?? '') ??
-                  (_accumulatedUsedBytes + batch);
-
+          _pendingTrafficBytes = (_pendingTrafficBytes - batch).clamp(0, 1 << 62);
+          final serverUsedBytes = int.tryParse(result['used_bytes']?.toString() ?? '') ??
+              (_accumulatedUsedBytes + batch);
           _accumulatedUsedBytes = serverUsedBytes;
           _userData!['used_bytes'] = serverUsedBytes;
-
           if (mounted) setState(() {});
 
           if (_isTruthy(result['deactivated'])) {
@@ -1056,11 +957,9 @@ class _ServerListScreenState extends State<ServerListScreen>
           }
         }
       }
-    } catch (e) {
-      debugPrint('Traffic update failed: $e');
+    } catch (_) {
     } finally {
       _trafficUpdateInProgress = false;
-
       if (_pendingTrafficBytes > 0 && _isConnected && !_logoutInProgress) {
         _flushPendingTraffic();
       }
@@ -1070,7 +969,6 @@ class _ServerListScreenState extends State<ServerListScreen>
   Future<void> _logoutUser(String reason) async {
     if (_logoutInProgress) return;
     _logoutInProgress = true;
-
     _userCheckTimer?.cancel();
 
     try {
@@ -1078,7 +976,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     } catch (_) {}
 
     final currentDeviceId = _deviceId;
-
     if (currentDeviceId != null && _userData != null) {
       try {
         await http
@@ -1100,13 +997,9 @@ class _ServerListScreenState extends State<ServerListScreen>
     await prefs.remove('device_id');
 
     if (!mounted) return;
-
     if (reason.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(reason),
-          backgroundColor: Colors.redAccent,
-        ),
+        SnackBar(content: Text(reason), backgroundColor: Colors.redAccent),
       );
     }
 
@@ -1148,22 +1041,18 @@ class _ServerListScreenState extends State<ServerListScreen>
       }
 
       if (!mounted) return;
-
       setState(() {
         _configs = loadedConfigs;
-
         if (_configs.isNotEmpty &&
             (_selectedConfigId == null ||
                 !_configs.any((item) => _configId(item) == _selectedConfigId))) {
           _selectedConfigId = _configId(_configs.first);
         }
-
         _isLoading = false;
       });
 
       _testAllPings();
-    } catch (e) {
-      debugPrint('Config fetch failed: $e');
+    } catch (_) {
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -1180,31 +1069,23 @@ class _ServerListScreenState extends State<ServerListScreen>
   Map<String, String> _rawQueryParametersPreservePlus(Uri uri) {
     final result = <String, String>{};
     final raw = uri.hasQuery ? uri.query : '';
-
     if (raw.isEmpty) return result;
 
     for (final part in raw.split('&')) {
       if (part.isEmpty) continue;
-
       final eq = part.indexOf('=');
       final rawKey = eq >= 0 ? part.substring(0, eq) : part;
       final rawValue = eq >= 0 ? part.substring(eq + 1) : '';
-
       try {
-        result[Uri.decodeComponent(rawKey)] =
-            Uri.decodeComponent(rawValue);
+        result[Uri.decodeComponent(rawKey)] = Uri.decodeComponent(rawValue);
       } catch (_) {
         result[rawKey] = rawValue;
       }
     }
-
     return result;
   }
 
-  String _firstQueryValue(
-    Map<String, String> query,
-    List<String> keys,
-  ) {
+  String _firstQueryValue(Map<String, String> query, List<String> keys) {
     for (final key in keys) {
       final value = query[key]?.trim();
       if (value != null && value.isNotEmpty) return value;
@@ -1213,123 +1094,27 @@ class _ServerListScreenState extends State<ServerListScreen>
   }
 
   List<String> _splitCsv(String value) {
-    return value
-        .split(',')
-        .map((item) => item.trim())
-        .where((item) => item.isNotEmpty)
-        .toList();
+    return value.split(',').map((item) => item.trim()).where((item) => item.isNotEmpty).toList();
   }
 
-  void _patchVlessAdvancedSettings(
-    Map<String, dynamic> config,
-    Map<String, String> rawQuery,
-  ) {
+  void _patchVlessAdvancedSettings(Map<String, dynamic> config, Map<String, String> rawQuery) {
     final outbounds = config['outbounds'];
     if (outbounds is! List) return;
 
     for (final item in outbounds) {
-      if (item is! Map) continue;
-
-      if (item['protocol']?.toString().toLowerCase() != 'vless') {
-        continue;
-      }
-
+      if (item is! Map || item['protocol']?.toString().toLowerCase() != 'vless') continue;
       final streamValue = item['streamSettings'];
       if (streamValue is! Map) continue;
-
       final stream = Map<String, dynamic>.from(streamValue);
       item['streamSettings'] = stream;
 
       final rawNetwork = _firstQueryValue(rawQuery, ['type', 'network']);
       if (rawNetwork.isNotEmpty) {
-        stream['network'] =
-            rawNetwork.toLowerCase() == 'splithttp' ? 'xhttp' : rawNetwork;
-      }
-
-      final security = _firstQueryValue(
-        rawQuery,
-        ['security'],
-      ).toLowerCase();
-
-      if (security == 'tls') {
-        final oldTls = stream['tlsSettings'];
-        final tls = oldTls is Map
-            ? Map<String, dynamic>.from(oldTls)
-            : <String, dynamic>{};
-
-        final sni = _firstQueryValue(rawQuery, ['sni', 'serverName']);
-        final fingerprint =
-            _firstQueryValue(rawQuery, ['fp', 'fingerprint']);
-        final alpn = _firstQueryValue(rawQuery, ['alpn']);
-
-        if (sni.isNotEmpty) tls['serverName'] = sni;
-        if (fingerprint.isNotEmpty) tls['fingerprint'] = fingerprint;
-
-        if (alpn.isNotEmpty) {
-          tls['alpn'] = _splitCsv(alpn);
-        }
-
-        final ech = _firstQueryValue(
-          rawQuery,
-          ['echConfigList', 'ech'],
-        );
-        if (ech.isNotEmpty) tls['echConfigList'] = ech;
-
-        final vcn = _firstQueryValue(
-          rawQuery,
-          ['vcn', 'verifyPeerCertByName'],
-        );
-        if (vcn.isNotEmpty) {
-          tls['verifyPeerCertByName'] = vcn;
-        }
-
-        final pcs = _firstQueryValue(
-          rawQuery,
-          ['pcs', 'pinnedPeerCertSha256'],
-        );
-
-        if (pcs.isNotEmpty) tls['pinnedPeerCertSha256'] = pcs;
-
-        tls.remove('allowInsecure');
-
-        stream['security'] = 'tls';
-        stream['tlsSettings'] = tls;
-        stream.remove('realitySettings');
-      } else if (security == 'reality') {
-        final oldReality = stream['realitySettings'];
-        final reality = oldReality is Map
-            ? Map<String, dynamic>.from(oldReality)
-            : <String, dynamic>{};
-
-        final sni = _firstQueryValue(rawQuery, ['sni', 'serverName']);
-        final fingerprint =
-            _firstQueryValue(rawQuery, ['fp', 'fingerprint']);
-        final publicKey =
-            _firstQueryValue(rawQuery, ['pbk', 'publicKey']);
-        final shortId = _firstQueryValue(rawQuery, ['sid', 'shortId']);
-        final spiderX = _firstQueryValue(rawQuery, ['spx', 'spiderX']);
-        final mldsa = _firstQueryValue(
-          rawQuery,
-          ['pqv', 'mldsa65Verify'],
-        );
-
-        reality['show'] = false;
-
-        if (sni.isNotEmpty) reality['serverName'] = sni;
-        if (fingerprint.isNotEmpty) reality['fingerprint'] = fingerprint;
-        if (publicKey.isNotEmpty) reality['publicKey'] = publicKey;
-        if (shortId.isNotEmpty) reality['shortId'] = shortId;
-        if (spiderX.isNotEmpty) reality['spiderX'] = spiderX;
-        if (mldsa.isNotEmpty) reality['mldsa65Verify'] = mldsa;
-
-        stream['security'] = 'reality';
-        stream['realitySettings'] = reality;
-        stream.remove('tlsSettings');
+        stream['network'] = rawNetwork.toLowerCase() == 'splithttp' ? 'xhttp' : rawNetwork;
       }
     }
   }
 
-  // تنظیمات بیس کانفیگ به همراه قوانین Routing جهت دور زدن تونل برای پنل مدیریت (هاست ایران)
   Map<String, dynamic> _baseConfig(Map<String, dynamic> outbound) {
     if (outbound is Map && !outbound.containsKey('tag')) {
       outbound['tag'] = 'proxy';
@@ -1343,123 +1128,54 @@ class _ServerListScreenState extends State<ServerListScreen>
           'port': 10808,
           'protocol': 'socks',
           'settings': {'auth': 'noauth', 'udp': true},
-          'sniffing': {
-            'enabled': true,
-            'destOverride': ['http', 'tls', 'quic'],
-          },
+          'sniffing': {'enabled': true, 'destOverride': ['http', 'tls', 'quic']},
         }
       ],
       'outbounds': [
         outbound,
-        {
-          'protocol': 'freedom',
-          'tag': 'direct'
-        }
+        {'protocol': 'freedom', 'tag': 'direct'}
       ],
       'routing': {
         'domainStrategy': 'AsIs',
         'rules': [
-          {
-            'type': 'field',
-            'domain': ['full:socialmedia-ad.ir'],
-            'outboundTag': 'direct'
-          }
+          {'type': 'field', 'domain': ['full:socialmedia-ad.ir'], 'outboundTag': 'direct'}
         ]
       },
-      'mux': {
-        'enabled': true,
-        'concurrency': 8,
-      },
+      'mux': {'enabled': true, 'concurrency': 8},
     };
   }
 
-  // Ensure API calls to the Iranian hosting panel bypass the proxy tunnel.
-  // Xray routing is hostname-based (not URL-path-based), so this applies to
-  // the whole socialmedia-ad.ir host, including /index.php.
   Map<String, dynamic> _applyApiDirectRouting(Map<String, dynamic> source) {
     final config = Map<String, dynamic>.from(source);
-
     final rawOutbounds = config['outbounds'];
     final outbounds = rawOutbounds is List
-        ? rawOutbounds
-            .whereType<Map>()
-            .map((item) => Map<String, dynamic>.from(item))
-            .toList()
-        : <Map<String, dynamic>>[];
+        ? rawOutbounds.whereType().map((item) => Map<String, dynamic>.from(item)).toList()
+        : >[];
 
     String? directTag;
     for (final outbound in outbounds) {
-      if (outbound['protocol'] == 'freedom' &&
-          outbound['tag'] == 'direct') {
+      if (outbound['protocol'] == 'freedom' && outbound['tag'] == 'direct') {
         directTag = 'direct';
         break;
       }
     }
 
-    if (directTag == null) {
-      for (final outbound in outbounds) {
-        if (outbound['protocol'] == 'freedom' &&
-            outbound['tag'] == 'api-direct') {
-          directTag = 'api-direct';
-          break;
-        }
-      }
-    }
-
-    if (directTag == null) {
-      directTag = 'api-direct';
-      var candidate = directTag;
-      var suffix = 2;
-      while (outbounds.any((item) => item['tag'] == candidate)) {
-        candidate = 'api-direct-$suffix';
-        suffix++;
-      }
-      directTag = candidate;
+    directTag ??= 'api-direct';
+    if (!outbounds.any((item) => item['tag'] == directTag)) {
       outbounds.add({'protocol': 'freedom', 'tag': directTag});
     }
     config['outbounds'] = outbounds;
 
-    // Domain routing for HTTPS needs TLS/HTTP sniffing on the inbound.
-    final rawInbounds = config['inbounds'];
-    if (rawInbounds is List) {
-      config['inbounds'] = rawInbounds.whereType<Map>().map((item) {
-        final inbound = Map<String, dynamic>.from(item);
-        final rawSniffing = inbound['sniffing'];
-        final sniffing = rawSniffing is Map
-            ? Map<String, dynamic>.from(rawSniffing)
-            : <String, dynamic>{};
-        sniffing['enabled'] = true;
-        final rawOverrides = sniffing['destOverride'];
-        final overrides = rawOverrides is List
-            ? rawOverrides.map((value) => value.toString()).toList()
-            : <String>[];
-        for (final protocol in const ['http', 'tls', 'quic']) {
-          if (!overrides.contains(protocol)) overrides.add(protocol);
-        }
-        sniffing['destOverride'] = overrides;
-        inbound['sniffing'] = sniffing;
-        return inbound;
-      }).toList();
-    }
-
     final rawRouting = config['routing'];
-    final routing = rawRouting is Map
-        ? Map<String, dynamic>.from(rawRouting)
-        : <String, dynamic>{};
+    final routing = rawRouting is Map ? Map<String, dynamic>.from(rawRouting) : <String, dynamic>{};
     final rawRules = routing['rules'];
     final rules = rawRules is List
-        ? rawRules.whereType<Map>()
-            .map((item) => Map<String, dynamic>.from(item))
-            .toList()
-        : <Map<String, dynamic>>[];
+        ? rawRules.whereType().map((item) => Map<String, dynamic>.from(item)).toList()
+        : >[];
 
-    // Remove only our own exact-host rule before reinserting it first,
-    // ensuring existing catch-all/proxy rules cannot shadow the bypass.
     rules.removeWhere((rule) {
       final domains = rule['domain'];
-      return rule['type'] == 'field' &&
-          domains is List &&
-          domains.contains('full:socialmedia-ad.ir');
+      return rule['type'] == 'field' && domains is List && domains.contains('full:socialmedia-ad.ir');
     });
     rules.insert(0, {
       'type': 'field',
@@ -1475,1175 +1191,3 @@ class _ServerListScreenState extends State<ServerListScreen>
 
   String _parseConfigToJson(String rawUrl) {
     var configUrl = _cleanUrl(rawUrl);
-
-    if (configUrl.isEmpty) {
-      throw const FormatException('Config is empty');
-    }
-
-    try {
-      final decodedJson = json.decode(configUrl);
-      if (decodedJson is Map) {
-        return json.encode(
-          _applyApiDirectRouting(Map<String, dynamic>.from(decodedJson)),
-        );
-      }
-      if (decodedJson is List) {
-        return json.encode(decodedJson);
-      }
-    } catch (_) {}
-
-    if (!configUrl.contains('://') &&
-        !configUrl.startsWith('{') &&
-        !configUrl.startsWith('[')) {
-      final compact = configUrl.replaceAll(RegExp(r'\s+'), '');
-
-      if (compact.length >= 8 &&
-          RegExp(r'^[A-Za-z0-9+/_=-]+$').hasMatch(compact)) {
-        try {
-          final normalized = compact.replaceAll('-', '+').replaceAll('_', '/');
-          final decoded = utf8
-              .decode(base64.decode(base64.normalize(normalized)))
-              .trim();
-
-          final lower = decoded.toLowerCase();
-
-          if (decoded.startsWith('{') ||
-              decoded.startsWith('[') ||
-              lower.startsWith('vless://') ||
-              lower.startsWith('vmess://') ||
-              lower.startsWith('trojan://') ||
-              lower.startsWith('ss://') ||
-              lower.startsWith('shadowsocks://') ||
-              lower.startsWith('socks://') ||
-              lower.startsWith('hysteria://') ||
-              lower.startsWith('hysteria2://') ||
-              lower.startsWith('hy2://') ||
-              lower.startsWith('tuic://') ||
-              lower.startsWith('wireguard://') ||
-              lower.startsWith('anytls://')) {
-            configUrl = decoded;
-          }
-        } catch (_) {}
-      }
-    }
-
-    try {
-      final decodedJson = json.decode(configUrl);
-      if (decodedJson is Map) {
-        return json.encode(
-          _applyApiDirectRouting(Map<String, dynamic>.from(decodedJson)),
-        );
-      }
-      if (decodedJson is List) {
-        return json.encode(decodedJson);
-      }
-    } catch (_) {}
-
-    final Uri uri;
-
-    try {
-      uri = Uri.parse(configUrl);
-    } catch (_) {
-      return V2ray.parseFromURL(configUrl).getFullConfiguration();
-    }
-
-    final scheme = uri.scheme.toLowerCase();
-    final query = _rawQueryParametersPreservePlus(uri);
-    final network = _firstQueryValue(query, ['type', 'network']).toLowerCase();
-    final security = _firstQueryValue(query, ['security']).toLowerCase();
-
-    if (network == 'ws' &&
-        (scheme == 'vless' || scheme == 'vmess' || scheme == 'trojan')) {
-      final serverHost = uri.host;
-      final port = uri.hasPort ? uri.port : 443;
-      final userInfo = Uri.decodeComponent(uri.userInfo);
-
-      if (serverHost.isEmpty || userInfo.isEmpty) {
-        throw const FormatException('WebSocket config has no server or user ID');
-      }
-
-      final transportHostValue = _firstQueryValue(query, ['host', 'authority']);
-      final transportHost = transportHostValue.isNotEmpty
-          ? transportHostValue
-          : serverHost;
-      final pathValue = _firstQueryValue(query, ['path']);
-      final path = pathValue.isNotEmpty ? pathValue : '/';
-      final wsSecurity = security.isEmpty ? 'none' : security;
-
-      final outbound = <String, dynamic>{
-        'protocol': scheme,
-        'settings': <String, dynamic>{},
-        'streamSettings': <String, dynamic>{
-          'network': 'ws',
-          'security': wsSecurity,
-          'wsSettings': <String, dynamic>{
-            'path': path,
-            'host': transportHost,
-            'headers': <String, dynamic>{'Host': transportHost},
-          },
-        },
-      };
-
-      final settings = outbound['settings'] as Map<String, dynamic>;
-      if (scheme == 'trojan') {
-        settings['servers'] = [
-          {'address': serverHost, 'port': port, 'password': userInfo},
-        ];
-      } else if (scheme == 'vmess') {
-        settings['vnext'] = [
-          {
-            'address': serverHost,
-            'port': port,
-            'users': [
-              {
-                'id': userInfo,
-                'alterId': int.tryParse(query['aid'] ?? '0') ?? 0,
-                'security': _firstQueryValue(query, ['scy', 'securityMethod']).isNotEmpty
-                    ? _firstQueryValue(query, ['scy', 'securityMethod'])
-                    : 'auto',
-              },
-            ],
-          },
-        ];
-      } else {
-        settings['vnext'] = [
-          {
-            'address': serverHost,
-            'port': port,
-            'users': [
-              {
-                'id': userInfo,
-                'encryption': _firstQueryValue(query, ['encryption']).isNotEmpty
-                    ? _firstQueryValue(query, ['encryption'])
-                    : 'none',
-                if (_firstQueryValue(query, ['flow']).isNotEmpty)
-                  'flow': _firstQueryValue(query, ['flow']),
-              },
-            ],
-          },
-        ];
-      }
-
-      final stream = outbound['streamSettings'] as Map<String, dynamic>;
-      if (wsSecurity == 'tls') {
-        final tls = <String, dynamic>{};
-        final sni = _firstQueryValue(query, ['sni', 'serverName']);
-        final fingerprint = _firstQueryValue(query, ['fp', 'fingerprint']);
-        final alpn = _firstQueryValue(query, ['alpn']);
-        final ech = _firstQueryValue(query, ['echConfigList', 'ech']);
-        final vcn = _firstQueryValue(query, ['vcn', 'verifyPeerCertByName']);
-        final pcs = _firstQueryValue(query, ['pcs', 'pinnedPeerCertSha256']);
-
-        tls['serverName'] = sni.isNotEmpty ? sni : transportHost;
-        if (fingerprint.isNotEmpty) tls['fingerprint'] = fingerprint;
-        if (alpn.isNotEmpty) tls['alpn'] = _splitCsv(alpn);
-        if (ech.isNotEmpty) tls['echConfigList'] = ech;
-        if (vcn.isNotEmpty) tls['verifyPeerCertByName'] = vcn;
-        if (pcs.isNotEmpty) tls['pinnedPeerCertSha256'] = pcs;
-        stream['tlsSettings'] = tls;
-      } else if (wsSecurity == 'reality') {
-        final sni = _firstQueryValue(query, ['sni', 'serverName']);
-        final fingerprint = _firstQueryValue(query, ['fp', 'fingerprint']);
-        final reality = <String, dynamic>{
-          'show': false,
-          'serverName': sni.isNotEmpty ? sni : transportHost,
-          'fingerprint': fingerprint.isNotEmpty ? fingerprint : 'chrome',
-        };
-        final publicKey = _firstQueryValue(query, ['pbk', 'publicKey']);
-        final shortId = _firstQueryValue(query, ['sid', 'shortId']);
-        final spiderX = _firstQueryValue(query, ['spx', 'spiderX']);
-        final mldsa = _firstQueryValue(query, ['pqv', 'mldsa65Verify']);
-        if (publicKey.isNotEmpty) reality['publicKey'] = publicKey;
-        if (shortId.isNotEmpty) reality['shortId'] = shortId;
-        if (spiderX.isNotEmpty) reality['spiderX'] = spiderX;
-        if (mldsa.isNotEmpty) reality['mldsa65Verify'] = mldsa;
-        stream['realitySettings'] = reality;
-      }
-
-      return json.encode(_baseConfig(outbound));
-    }
-
-    if (network == 'xhttp' || network == 'splithttp') {
-      final protocol = scheme == 'vmess'
-          ? 'vmess'
-          : scheme == 'trojan'
-              ? 'trojan'
-              : 'vless';
-
-      final host = uri.host;
-      final port = uri.hasPort ? uri.port : 443;
-      final userInfo = Uri.decodeComponent(uri.userInfo);
-
-      if (host.isEmpty || userInfo.isEmpty) {
-        throw const FormatException('XHTTP config has no server or ID');
-      }
-
-      final transportHost =
-          _firstQueryValue(query, ['host', 'authority']).isNotEmpty
-              ? _firstQueryValue(query, ['host', 'authority'])
-              : host;
-
-      final pathValue = _firstQueryValue(query, ['path']);
-      final path = pathValue.isNotEmpty ? pathValue : '/';
-
-      final modeValue = _firstQueryValue(query, ['mode']);
-      final mode = modeValue.isNotEmpty ? modeValue : 'auto';
-
-      final outbound = <String, dynamic>{
-        'protocol': protocol,
-        'settings': <String, dynamic>{},
-        'streamSettings': <String, dynamic>{
-          'network': 'xhttp',
-          'security': security.isEmpty ? 'none' : security,
-          'xhttpSettings': <String, dynamic>{
-            'path': path,
-            'host': transportHost,
-            'mode': mode,
-          },
-        },
-      };
-
-      final settings = outbound['settings'] as Map<String, dynamic>;
-
-      if (protocol == 'trojan') {
-        settings['servers'] = [
-          {
-            'address': host,
-            'port': port,
-            'password': userInfo,
-          }
-        ];
-      } else if (protocol == 'vmess') {
-        settings['vnext'] = [
-          {
-            'address': host,
-            'port': port,
-            'users': [
-              {
-                'id': userInfo,
-                'alterId': int.tryParse(query['aid'] ?? '0') ?? 0,
-                'security': query['scy'] ?? 'auto',
-              }
-            ],
-          }
-        ];
-      } else {
-        settings['vnext'] = [
-          {
-            'address': host,
-            'port': port,
-            'users': [
-              {
-                'id': userInfo,
-                'encryption': query['encryption'] ?? 'none',
-                if ((query['flow'] ?? '').isNotEmpty) 'flow': query['flow'],
-              }
-            ],
-          }
-        ];
-      }
-
-      final stream =
-          outbound['streamSettings'] as Map<String, dynamic>;
-      final xhttp =
-          stream['xhttpSettings'] as Map<String, dynamic>;
-
-      final extra = query['extra'];
-      if (extra != null && extra.trim().isNotEmpty) {
-        try {
-          xhttp['extra'] = json.decode(extra);
-        } catch (_) {}
-      }
-
-      if (security == 'tls') {
-        final tls = <String, dynamic>{};
-
-        final sni = _firstQueryValue(query, ['sni', 'serverName']);
-        final fingerprint =
-            _firstQueryValue(query, ['fp', 'fingerprint']);
-        final alpn = _firstQueryValue(query, ['alpn']);
-        final ech = _firstQueryValue(query, ['echConfigList', 'ech']);
-        final vcn = _firstQueryValue(
-          query,
-          ['vcn', 'verifyPeerCertByName'],
-        );
-        final pcs = _firstQueryValue(
-          query,
-          ['pcs', 'pinnedPeerCertSha256'],
-        );
-
-        tls['serverName'] = sni.isNotEmpty ? sni : transportHost;
-
-        if (fingerprint.isNotEmpty) {
-          tls['fingerprint'] = fingerprint;
-        }
-
-        if (alpn.isNotEmpty) tls['alpn'] = _splitCsv(alpn);
-        if (ech.isNotEmpty) tls['echConfigList'] = ech;
-        if (vcn.isNotEmpty) tls['verifyPeerCertByName'] = vcn;
-        if (pcs.isNotEmpty) tls['pinnedPeerCertSha256'] = pcs;
-
-        stream['tlsSettings'] = tls;
-      } else if (security == 'reality') {
-        final reality = <String, dynamic>{
-          'show': false,
-          'serverName': _firstQueryValue(query, ['sni', 'serverName'])
-                  .isNotEmpty
-              ? _firstQueryValue(query, ['sni', 'serverName'])
-              : transportHost,
-          'fingerprint':
-              _firstQueryValue(query, ['fp', 'fingerprint']).isNotEmpty
-                  ? _firstQueryValue(query, ['fp', 'fingerprint'])
-                  : 'chrome',
-        };
-
-        final publicKey =
-            _firstQueryValue(query, ['pbk', 'publicKey']);
-        final shortId = _firstQueryValue(query, ['sid', 'shortId']);
-        final spiderX = _firstQueryValue(query, ['spx', 'spiderX']);
-        final mldsa =
-            _firstQueryValue(query, ['pqv', 'mldsa65Verify']);
-
-        if (publicKey.isNotEmpty) reality['publicKey'] = publicKey;
-        if (shortId.isNotEmpty) reality['shortId'] = shortId;
-        if (spiderX.isNotEmpty) reality['spiderX'] = spiderX;
-        if (mldsa.isNotEmpty) reality['mldsa65Verify'] = mldsa;
-
-        stream['realitySettings'] = reality;
-      }
-
-      return json.encode(_baseConfig(outbound));
-    }
-
-    final parser = V2ray.parseFromURL(configUrl);
-    final generated = parser.getFullConfiguration();
-
-    try {
-      final decoded = json.decode(generated);
-
-      if (decoded is Map) {
-        final config = Map<String, dynamic>.from(decoded);
-
-        if (scheme == 'vless') {
-          _patchVlessAdvancedSettings(config, query);
-        }
-
-        return json.encode(_applyApiDirectRouting(config));
-      }
-    } catch (_) {}
-
-    return generated;
-  }
-
-  Future<void> _testAllPings() async {
-    if (_isTestingAllPings || _configs.isEmpty) return;
-
-    if (mounted) {
-      setState(() {
-        _isTestingAllPings = true;
-
-        for (final item in _configs) {
-          final id = _configId(item);
-          if (id.isNotEmpty) {
-            _pingLoading[id] = true;
-            _pings[id] = -1;
-          }
-        }
-      });
-    }
-
-    await Future.wait(_configs.map(_testServerDelay));
-
-    if (!mounted) return;
-
-    setState(() {
-      _configs.sort((a, b) {
-        final pingA = _pings[_configId(a)] ?? -1;
-        final pingB = _pings[_configId(b)] ?? -1;
-
-        final validA = pingA > 0 ? pingA : 1 << 30;
-        final validB = pingB > 0 ? pingB : 1 << 30;
-
-        return validA.compareTo(validB);
-      });
-
-      _isTestingAllPings = false;
-    });
-  }
-
-  Future<void> _testServerDelay(dynamic item) async {
-    if (item is! Map) return;
-
-    final rawUrl = (item['config'] ?? '').toString().trim();
-    final configId = _configId(item);
-
-    if (rawUrl.isEmpty || configId.isEmpty) {
-      if (mounted && configId.isNotEmpty) {
-        setState(() {
-          _pings[configId] = -1;
-          _pingLoading[configId] = false;
-        });
-      }
-      return;
-    }
-
-    var delay = -1;
-
-    try {
-      final configJson = _parseConfigToJson(rawUrl);
-      delay = await flutterV2ray
-          .getServerDelay(config: configJson)
-          .timeout(const Duration(seconds: 20));
-    } catch (e) {
-      debugPrint('Ping failed for $configId: $e');
-    }
-
-    if (!mounted) return;
-
-    setState(() {
-      _pings[configId] = delay > 0 ? delay : -1;
-      _pingLoading[configId] = false;
-    });
-  }
-
-  Future<void> _toggleMainConnection() async {
-    if (_isConnectingProcess) return;
-
-    if (_isConnected) {
-      setState(() {
-        _userWantsDisconnect = true;
-        _isConnected = false;
-        _isConnectingProcess = true;
-      });
-
-      try {
-        await flutterV2ray.stopV2Ray();
-      } catch (_) {}
-
-      await _flushPendingTraffic();
-
-      if (mounted) {
-        setState(() {
-          _isConnectingProcess = false;
-          _lastSessionUpload = 0;
-          _lastSessionDownload = 0;
-          _trafficBaselineInitialized = false;
-        });
-      }
-
-      return;
-    }
-
-    if (_configs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('هیچ سروری در دسترس نیست.')),
-      );
-      return;
-    }
-
-    if (_selectedConfigId == null ||
-        !_configs.any((item) => _configId(item) == _selectedConfigId)) {
-      _selectedConfigId = _configId(_configs.first);
-    }
-
-    final selectedConfig = _configs.firstWhere(
-      (item) => _configId(item) == _selectedConfigId,
-      orElse: () => _configs.first,
-    );
-
-    final rawUrl = (selectedConfig['config'] ?? '').toString().trim();
-
-    if (rawUrl.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('آدرس کانفیگ این سرور خالی است.')),
-      );
-      return;
-    }
-
-    setState(() {
-      _userWantsDisconnect = false;
-      _isConnectingProcess = true;
-    });
-
-    try {
-      final hasPermission = await flutterV2ray.requestPermission();
-
-      if (!hasPermission) {
-        if (mounted) setState(() => _isConnectingProcess = false);
-        return;
-      }
-
-      final configJson = _parseConfigToJson(rawUrl);
-
-      // Use the name from the admin panel/app list for the Android VPN
-      // foreground notification. The URL's #remark may still contain the
-      // old name after an admin renames a config, so do not override this
-      // value with V2ray.parseFromURL(...).remark.
-      final remark = (selectedConfig['name'] ?? 'Xray Server').toString().trim().isNotEmpty
-          ? (selectedConfig['name'] ?? 'Xray Server').toString().trim()
-          : 'Xray Server';
-
-      debugPrint('V2Ray: starting profile="$remark"');
-      final debugUri = Uri.tryParse(_cleanUrl(rawUrl));
-      final debugNetwork = debugUri == null
-          ? ''
-          : _firstQueryValue(
-              _rawQueryParametersPreservePlus(debugUri),
-              const ['type', 'network'],
-            );
-      debugPrint(
-        'V2Ray: parsed scheme=${debugUri?.scheme}, '
-        'host=${debugUri?.host}, port=${debugUri?.port}, '
-        'network=$debugNetwork',
-      );
-
-      // Split tunneling is implemented using the plugin's blockedApps list.
-      // Android's VPN API excludes these packages from the VPN tunnel, so we
-      // pass every installed package except the apps explicitly selected by
-      // the user. When the feature is disabled, behavior remains unchanged.
-      List<String>? blockedApps;
-      if (Platform.isAndroid) {
-        final prefs = await SharedPreferences.getInstance();
-        final splitEnabled = prefs.getBool('split_tunneling_enabled') ?? false;
-        if (splitEnabled) {
-          final selectedPackages =
-              prefs.getStringList('split_tunneling_selected')?.toSet() ?? <String>{};
-          final installedApps = await InstalledApps.getInstalledApps(
-            excludeSystemApps: false,
-            excludeNonLaunchableApps: false,
-            withIcon: false,
-            detectPlatformType: false,
-          );
-          // Selected packages are excluded from the VPN tunnel.
-          // Unselected applications continue to use the VPN as usual.
-          final installedPackages = installedApps
-              .map((app) => app.packageName)
-              .where((packageName) => packageName.isNotEmpty)
-              .toSet();
-          blockedApps = selectedPackages
-              .where((packageName) => installedPackages.contains(packageName))
-              .toList();
-          debugPrint(
-            'Split tunneling enabled: ${blockedApps.length} apps excluded from VPN',
-          );
-        }
-      }
-
-      await flutterV2ray.startV2Ray(
-        remark: remark,
-        config: configJson,
-        blockedApps: blockedApps,
-        proxyOnly: false,
-      );
-
-      await Future<void>.delayed(const Duration(seconds: 4));
-      if (!mounted || _userWantsDisconnect) return;
-
-      if (!_isConnected) {
-        setState(() => _isConnectingProcess = false);
-        debugPrint('V2Ray: no CONNECTED status after 4 seconds; collecting core logs.');
-        try {
-          final logs = await flutterV2ray.getLogs();
-          for (final line in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
-            debugPrint('[XRAY_CORE] $line');
-          }
-        } catch (logError) {
-          debugPrint('V2Ray: unable to read core logs: $logError');
-        }
-
-        if (mounted && !_isConnected) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('هسته اتصال را تأیید نکرد. لاگ‌های [XRAY_CORE] را از Debug Console بررسی کنید.'),
-              duration: Duration(seconds: 6),
-            ),
-          );
-        }
-      } else {
-        setState(() => _isConnectingProcess = false);
-      }
-    } catch (e, stackTrace) {
-      debugPrint('V2Ray start failed: $e');
-      debugPrint('$stackTrace');
-      try {
-        final logs = await flutterV2ray.getLogs();
-        for (final line in logs.skip(logs.length > 100 ? logs.length - 100 : 0)) {
-          debugPrint('[XRAY_CORE] $line');
-        }
-      } catch (logError) {
-        debugPrint('V2Ray: unable to read core logs: $logError');
-      }
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطا در اتصال: $e'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-
-      setState(() {
-        _isConnectingProcess = false;
-        _isConnected = false;
-      });
-    }
-  }
-
-  String _getProtocolType(String url) {
-    final value = url.trim().toLowerCase();
-
-    if (value.startsWith('vless://')) return 'VLESS';
-    if (value.startsWith('vmess://')) return 'VMESS';
-    if (value.startsWith('trojan://')) return 'TROJAN';
-    if (value.startsWith('ss://') ||
-        value.startsWith('shadowsocks://')) {
-      return 'SS';
-    }
-    if (value.startsWith('socks://')) return 'SOCKS';
-    if (value.startsWith('hysteria2://') ||
-        value.startsWith('hy2://')) {
-      return 'HY2';
-    }
-    if (value.startsWith('hysteria://')) return 'HYSTERIA';
-    if (value.startsWith('tuic://')) return 'TUIC';
-    if (value.startsWith('wireguard://')) return 'WG';
-    if (value.startsWith('anytls://')) return 'ANYTLS';
-
-    return 'XRAY';
-  }
-
-  Widget _buildAnnouncementBanner() {
-    if (_announcementData.isEmpty) return const SizedBox.shrink();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: _announcementData.map((announcement) {
-        final text = (announcement['text'] ?? '').toString();
-        final imageUrl = (announcement['image_url'] ?? '').toString();
-        final targetUrl = (announcement['target_url'] ?? '').toString().trim();
-        final hasLink = targetUrl.isNotEmpty;
-
-        return GestureDetector(
-          onTap: !hasLink
-              ? null
-              : () async {
-                  final uri = Uri.tryParse(targetUrl);
-                  if (uri == null || !uri.hasScheme) return;
-                  try {
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(
-                        uri,
-                        mode: LaunchMode.externalApplication,
-                      );
-                    }
-                  } catch (_) {}
-                },
-          child: Container(
-            // Match the horizontal width and alignment of the config cards
-            // (ListView horizontal padding: 12 and card bottom margin: 10).
-            width: double.infinity,
-            margin: const EdgeInsets.only(
-              left: 12,
-              right: 12,
-              top: 6,
-              bottom: 4,
-            ),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2E354F),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: const Color(0xFF8B5CF6).withOpacity(0.5),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (imageUrl.isNotEmpty)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      imageUrl,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                    ),
-                  ),
-                if (text.isNotEmpty || hasLink) ...[
-                  if (imageUrl.isNotEmpty) const SizedBox(height: 8),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      if (text.isNotEmpty)
-                        Expanded(
-                          child: Text(
-                            text,
-                            style: const TextStyle(height: 1.5),
-                          ),
-                        ),
-                      if (hasLink) ...[
-                        if (text.isNotEmpty) const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF8B5CF6).withOpacity(0.16),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.open_in_new_rounded,
-                                size: 16,
-                                color: Color(0xFFC4B5FD),
-                              ),
-                              SizedBox(width: 4),
-                              Text(
-                                'مشاهده لینک',
-                                style: TextStyle(
-                                  color: Color(0xFFC4B5FD),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final maxGb =
-        double.tryParse(_userData?['max_volume_gb']?.toString() ?? '0') ?? 0;
-
-    final usedGb = maxGb > 0
-        ? _accumulatedUsedBytes / (1024 * 1024 * 1024)
-        : 0.0;
-
-    return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight),
-        child: Directionality(
-          textDirection: TextDirection.ltr,
-          child: AppBar(
-        automaticallyImplyLeading: false,
-        leading: Builder(
-          builder: (context) => IconButton(
-            tooltip: 'منو',
-            icon: const Icon(Icons.menu, color: Colors.white70),
-            onPressed: () {
-              final screenWidth = MediaQuery.of(context).size.width;
-              showGeneralDialog<void>(
-                context: context,
-                barrierDismissible: true,
-                barrierLabel: 'منوی اصلی',
-                barrierColor: Colors.black54,
-                transitionDuration: const Duration(milliseconds: 220),
-                pageBuilder: (dialogContext, animation, secondaryAnimation) {
-                  return Align(
-                    alignment: Alignment.centerLeft,
-                    child: Material(
-                      color: const Color(0xFF222536),
-                      elevation: 16,
-                      child: SizedBox(
-                        width: screenWidth * 0.58,
-                        height: double.infinity,
-                        child: Directionality(
-                          textDirection: TextDirection.rtl,
-                          child: SafeArea(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                const Padding(
-                                  padding: EdgeInsets.fromLTRB(18, 24, 18, 18),
-                                  child: Text('منوی اصلی', textAlign: TextAlign.right,
-                                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                                ),
-                                const Divider(height: 1, color: Colors.white12),
-                                ListTile(
-                                  leading: const Icon(Icons.shield_outlined, color: Color(0xFFC4B5FD)),
-                                  title: const Text('عبور انتخابی برنامه‌ها', textAlign: TextAlign.right),
-                                  subtitle: const Text('مدیریت برنامه‌های خارج از VPN', textAlign: TextAlign.right,
-                                    style: TextStyle(color: Colors.white54, fontSize: 11)),
-                                  onTap: () {
-                                    Navigator.of(dialogContext).pop();
-                                    Navigator.of(context).push(MaterialPageRoute<void>(
-                                      builder: (_) => const SplitTunnelingScreen(),
-                                    ));
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-                transitionBuilder: (context, animation, secondaryAnimation, child) {
-                  final slide = Tween<Offset>(begin: const Offset(-1, 0), end: Offset.zero)
-                      .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
-                  return SlideTransition(position: slide, child: child);
-                },
-              );
-            },
-          ),
-        ),
-        title: Column(
-          children: [
-            const Text(
-              'HUSKY VPN',
-              style: TextStyle(fontSize: 18, color: Colors.white70),
-            ),
-            Text(
-              'Core: $_coreVersion',
-              style: const TextStyle(fontSize: 10, color: Colors.white38),
-            ),
-          ],
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.redAccent),
-            onPressed: () {
-              showDialog<void>(
-                context: context,
-                builder: (dialogContext) => AlertDialog(
-                  backgroundColor: const Color(0xFF222536),
-                  title: const Text('خروج از حساب'),
-                  content: const Text(
-                    'آیا می‌خواهید از حساب کاربری خود خارج شوید؟',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('انصراف'),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pop(dialogContext);
-                        _logoutUser('');
-                      },
-                      child: const Text(
-                        'خروج',
-                        style: TextStyle(color: Colors.redAccent),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-          ),
-        ),
-      ),
-      body: Column(
-        children: [
-          _buildAnnouncementBanner(),
-          Expanded(
-            child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                      color: Color(0xFF8B9BB4),
-                    ),
-                  )
-                : _configs.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.cloud_off,
-                              size: 42,
-                              color: Colors.white38,
-                            ),
-                            const SizedBox(height: 12),
-                            const Text('سروری دریافت نشد.'),
-                            const SizedBox(height: 8),
-                            TextButton(
-                              onPressed: _fetchConfigs,
-                              child: const Text('تلاش دوباره'),
-                            ),
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        itemCount: _configs.length,
-                        itemBuilder: (context, index) {
-                          final item = _configs[index];
-                          final configId = _configId(item);
-                          final configUrl =
-                              (item['config'] ?? '').toString();
-                          final protocol = _getProtocolType(configUrl);
-                          final isSelected =
-                              _selectedConfigId == configId;
-                          final ping = _pings[configId] ?? -1;
-                          final pingLoading =
-                              _pingLoading[configId] ?? false;
-
-                          return GestureDetector(
-                            onTap: () {
-                              if (_isConnected) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'لطفاً ابتدا اتصال فعلی را قطع کنید.',
-                                    ),
-                                    backgroundColor: Colors.orangeAccent,
-                                  ),
-                                );
-                                return;
-                              }
-
-                              setState(() {
-                                _selectedConfigId = configId;
-                              });
-                            },
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 10),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? const Color(0xFF2A3045)
-                                    : const Color(0xFF232738),
-                                borderRadius: BorderRadius.circular(12),
-                                border: isSelected
-                                    ? Border.all(
-                                        color: const Color(0xFF7A93D1),
-                                        width: 1.5,
-                                      )
-                                    : null,
-                              ),
-                              child: IntrinsicHeight(
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 26,
-                                      decoration: const BoxDecoration(
-                                        color: Colors.black26,
-                                        borderRadius: BorderRadius.only(
-                                          topLeft: Radius.circular(12),
-                                          bottomLeft: Radius.circular(12),
-                                        ),
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: RotatedBox(
-                                        quarterTurns: 3,
-                                        child: Text(
-                                          protocol,
-                                          style: const TextStyle(
-                                            color: Colors.white38,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 14,
-                                        ),
-                                        child: Text(
-                                          (item['name'] ?? 'سرور Xray')
-                                              .toString(),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.all(8),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: pingLoading
-                                              ? Colors.white10
-                                              : ping > 0
-                                                  ? const Color(0xFF2E5A3C)
-                                                  : const Color(0xFF613137),
-                                          borderRadius:
-                                              BorderRadius.circular(10),
-                                        ),
-                                        child: Text(
-                                          pingLoading
-                                              ? '...'
-                                              : ping > 0
-                                                  ? '${ping}ms'
-                                                  : '-1ms',
-                                          style: TextStyle(
-                                            color: pingLoading
-                                                ? Colors.white54
-                                                : ping > 0
-                                                    ? const Color(0xFF81C784)
-                                                    : const Color(0xFFE57373),
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-          ),
-          Container(
-            color: const Color(0xFF28314A),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 10,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.circle,
-                  size: 12,
-                  color: _isConnected
-                      ? Colors.greenAccent
-                      : Colors.redAccent,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _isConnected ? 'CONNECTED' : 'DISCONNECTED',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 45),
-        child: FloatingActionButton(
-          backgroundColor: _isConnected
-              ? const Color(0xFF4CAF50)
-              : const Color(0xFFB0BEC5),
-          onPressed: _toggleMainConnection,
-          child: _isConnectingProcess
-              ? const CircularProgressIndicator(color: Colors.white)
-              : Icon(
-                  Icons.power_settings_new,
-                  color: _isConnected
-                      ? Colors.white
-                      : const Color(0xFF1B1D29),
-                  size: 30,
-                ),
-        ),
-      ),
-      bottomNavigationBar: Container(
-        color: const Color(0xFF151821),
-        height: 60,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            InkWell(
-              onTap: _fetchConfigs,
-              child: const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.file_download_outlined,
-                    color: Colors.white54,
-                    size: 20,
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Get Config',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  maxGb > 0
-                      ? 'حجم: ${usedGb.toStringAsFixed(2)} / '
-                          '${maxGb.toStringAsFixed(1)} GB'
-                      : 'حجم: نامحدود',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.87),
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'اعتبار: $_remainingTimeText',
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 10,
-                  ),
-                ),
-              ],
-            ),
-            InkWell(
-              onTap: _isTestingAllPings ? null : _testAllPings,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.bolt,
-                    color: _isTestingAllPings
-                        ? Colors.amber
-                        : Colors.white54,
-                    size: 20,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _isTestingAllPings ? 'Testing...' : 'Test',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
