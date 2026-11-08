@@ -368,7 +368,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                'STEALTH TACTICAL ACCESS',
+                'سریع و روان، آزاد در جهان',
                 style: TextStyle(
                   fontSize: 10,
                   letterSpacing: 2.2,
@@ -562,7 +562,7 @@ class _SplitTunnelingScreenState extends State<SplitTunnelingScreen> {
         appBar: AppBar(
           backgroundColor: HudColors.bg,
           title: const Text(
-            'عبور انتخابی برنامه‌ها',
+            'split tunneling',
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
           ),
           centerTitle: true,
@@ -2649,7 +2649,7 @@ class _ServerListScreenState extends State<ServerListScreen>
                   showGeneralDialog<void>(
                     context: context,
                     barrierDismissible: true,
-                    barrierLabel: 'منوی اصلی',
+                    barrierLabel: 'منو',
                     barrierColor: Colors.black54,
                     transitionDuration: const Duration(milliseconds: 220),
                     pageBuilder:
@@ -2673,7 +2673,7 @@ class _ServerListScreenState extends State<ServerListScreen>
                                       padding:
                                           EdgeInsets.fromLTRB(18, 24, 18, 18),
                                       child: Text(
-                                        'منوی اصلی',
+                                        'منو',
                                         textAlign: TextAlign.right,
                                         style: TextStyle(
                                           fontSize: 18,
@@ -2691,7 +2691,7 @@ class _ServerListScreenState extends State<ServerListScreen>
                                         color: HudColors.activePrimary,
                                       ),
                                       title: const Text(
-                                        'عبور انتخابی برنامه‌ها',
+                                        'split tunneling',
                                         textAlign: TextAlign.right,
                                       ),
                                       subtitle: const Text(
