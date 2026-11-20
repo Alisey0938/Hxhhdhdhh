@@ -808,7 +808,6 @@ class _ServerListScreenState extends State<ServerListScreen>
 
   bool _isLoading = true;
   bool _isTestingAllPings = false;
-  bool _isRefreshingSubscription = false;
   bool _isConnectingProcess = false;
   bool _isConnected = false;
   bool _userWantsDisconnect = false;
@@ -2295,125 +2294,6 @@ class _ServerListScreenState extends State<ServerListScreen>
     return 'XRAY';
   }
 
-  Future<void> _refreshSubscription() async {
-    if (_isRefreshingSubscription || _logoutInProgress) return;
-    setState(() => _isRefreshingSubscription = true);
-    try {
-      await _fetchUserDataAndCheck();
-      await _fetchAnnouncement();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('اطلاعات اشتراک به‌روزرسانی شد.')),
-        );
-      }
-    } catch (e) {
-      debugPrint('Subscription refresh failed: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('به‌روزرسانی اشتراک ناموفق بود.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isRefreshingSubscription = false);
-    }
-  }
-
-  Widget _buildSubscriptionSummary() {
-    final data = _userData ?? <String, dynamic>{};
-    final maxGb = double.tryParse(data['max_volume_gb']?.toString() ?? '0') ?? 0;
-    final usedGb = _accumulatedUsedBytes / (1024 * 1024 * 1024);
-    final sessions = data['active_sessions'];
-    final userCount = sessions is Map ? sessions.length : 1;
-    final volumeText = maxGb > 0
-        ? '${usedGb.toStringAsFixed(1)} / ${maxGb.toStringAsFixed(1)} GB'
-        : '${usedGb.toStringAsFixed(1)} GB / نامحدود';
-
-    Widget metric(String label, String value, IconData icon) {
-      return Expanded(
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 66),
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 9),
-          decoration: BoxDecoration(
-            color: HudColors.bg,
-            borderRadius: BorderRadius.circular(9),
-            border: Border.all(color: HudColors.borderIdle),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 15, color: HudColors.activePrimary),
-              const SizedBox(height: 5),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  value,
-                  maxLines: 1,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white54, fontSize: 9),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(10, 5, 10, 7),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: HudColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: HudColors.borderIdle),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'اطلاعات اشتراک',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: HudColors.activeSecondary.withOpacity(0.10),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  'فعال',
-                  style: TextStyle(color: HudColors.activeSecondary, fontSize: 10),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 9),
-          Row(
-            children: [
-              metric('حجم مصرفی', volumeText, Icons.data_usage_rounded),
-              const SizedBox(width: 6),
-              metric('مدت اعتبار', _remainingTimeText, Icons.calendar_month_rounded),
-              const SizedBox(width: 6),
-              metric('تعداد کاربر', '$userCount', Icons.people_alt_outlined),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildAnnouncementBanner() {
     if (_announcementData.isEmpty) return const SizedBox.shrink();
 
@@ -2526,115 +2406,214 @@ class _ServerListScreenState extends State<ServerListScreen>
   }
 
   Widget _buildHudConnectReactor(Color accentColor) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: HudColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accentColor.withOpacity(0.45), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withOpacity(0.12),
+            blurRadius: 18,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            width: double.infinity,
-            height: 54,
-            child: AnimatedBuilder(
-              animation: _shockwaveController,
-              builder: (context, child) {
-                return ElevatedButton.icon(
-                  onPressed: _isConnectingProcess ? null : _toggleMainConnection,
-                  icon: SizedBox(
-                    width: 25,
-                    height: 25,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        if (!_shockwaveController.isDismissed)
-                          Transform.scale(
+          Row(
+            children: [
+              GestureDetector(
+                onTap: _toggleMainConnection,
+                child: SizedBox(
+                  width: 68,
+                  height: 68,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      AnimatedBuilder(
+                        animation: _shockwaveController,
+                        builder: (context, _) {
+                          if (_shockwaveController.isDismissed) {
+                            return const SizedBox.shrink();
+                          }
+                          return Transform.scale(
                             scale: _shockwaveScale.value,
                             child: Opacity(
                               opacity: _shockwaveOpacity.value,
                               child: Container(
+                                width: 58,
+                                height: 58,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 1.5),
+                                  border: Border.all(
+                                    color: accentColor,
+                                    width: 2.5,
+                                  ),
                                 ),
                               ),
                             ),
+                          );
+                        },
+                      ),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 240),
+                        width: 58,
+                        height: 58,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _isConnected
+                              ? accentColor.withOpacity(0.18)
+                              : HudColors.surfaceAlt,
+                          border: Border.all(color: accentColor, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: accentColor.withOpacity(0.35),
+                              blurRadius: 14,
+                            ),
+                          ],
+                        ),
+                        child: _isConnectingProcess
+                            ? Padding(
+                                padding: const EdgeInsets.all(15),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: accentColor,
+                                ),
+                              )
+                            : Icon(
+                                Icons.power_settings_new_rounded,
+                                color: accentColor,
+                                size: 30,
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: accentColor,
+                            boxShadow: [
+                              BoxShadow(
+                                color: accentColor.withOpacity(0.8),
+                                blurRadius: 6,
+                              ),
+                            ],
                           ),
-                        if (_isConnectingProcess)
-                          const CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          )
-                        else
-                          const Icon(Icons.power_settings_new_rounded, size: 23),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _isConnectingProcess
+                              ? 'CONNECTING...'
+                              : _isConnected
+                                  ? 'CONNECTED // SECURE'
+                                  : 'STANDBY // READY',
+                          style: TextStyle(
+                            color: accentColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                  label: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      _isConnectingProcess
-                          ? 'در حال اتصال...'
-                          : _isConnected
-                              ? 'قطع اتصال VPN'
-                              : 'اتصال به VPN',
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: HudColors.bg,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: HudColors.borderIdle),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.arrow_downward_rounded,
+                                  size: 14,
+                                  color: _isConnected
+                                      ? HudColors.activeSecondary
+                                      : Colors.white38,
+                                ),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    _currentDownloadSpeed,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: HudColors.bg,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: HudColors.borderIdle),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.arrow_upward_rounded,
+                                  size: 14,
+                                  color: _isConnected
+                                      ? HudColors.activePrimary
+                                      : Colors.white38,
+                                ),
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    _currentUploadSpeed,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _isConnected
-                        ? HudColors.activeSecondary.withOpacity(0.85)
-                        : HudColors.surfaceAlt,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: HudColors.surfaceAlt,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(11),
-                      side: BorderSide(color: accentColor.withOpacity(0.65)),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 7),
-          Row(
-            children: [
-              Expanded(child: _buildSpeedIndicator(
-                Icons.arrow_downward_rounded,
-                _currentDownloadSpeed,
-                HudColors.activeSecondary,
-              )),
-              const SizedBox(width: 7),
-              Expanded(child: _buildSpeedIndicator(
-                Icons.arrow_upward_rounded,
-                _currentUploadSpeed,
-                HudColors.activePrimary,
-              )),
+                  ],
+                ),
+              ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSpeedIndicator(IconData icon, String value, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-      decoration: BoxDecoration(
-        color: HudColors.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: HudColors.borderIdle),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-            ),
           ),
         ],
       ),
@@ -2643,301 +2622,445 @@ class _ServerListScreenState extends State<ServerListScreen>
 
   @override
   Widget build(BuildContext context) {
+    final maxGb =
+        double.tryParse(_userData?['max_volume_gb']?.toString() ?? '0') ?? 0;
+
+    final usedGb =
+        maxGb > 0 ? _accumulatedUsedBytes / (1024 * 1024 * 1024) : 0.0;
+
     final accentColor = _isConnected
         ? HudColors.activePrimary
         : HudColors.standbyPrimary;
 
     return Scaffold(
       backgroundColor: HudColors.bg,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        titleSpacing: 4,
-        leading: Builder(
-          builder: (context) => IconButton(
-            tooltip: 'منو',
-            icon: const Icon(Icons.menu_rounded, color: Colors.white70),
-            onPressed: () {
-              final screenWidth = MediaQuery.of(context).size.width;
-              showGeneralDialog<void>(
-                context: context,
-                barrierDismissible: true,
-                barrierLabel: 'منو',
-                barrierColor: Colors.black54,
-                transitionDuration: const Duration(milliseconds: 220),
-                pageBuilder: (dialogContext, animation, secondaryAnimation) {
-                  return Align(
-                    alignment: Alignment.centerLeft,
-                    child: Material(
-                      color: HudColors.surface,
-                      elevation: 16,
-                      child: SizedBox(
-                        width: (screenWidth * 0.72).clamp(220.0, 310.0).toDouble(),
-                        height: double.infinity,
-                        child: Directionality(
-                          textDirection: TextDirection.rtl,
-                          child: SafeArea(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                const Padding(
-                                  padding: EdgeInsets.fromLTRB(18, 22, 18, 16),
-                                  child: Text(
-                                    'Husky vpn',
-                                    textAlign: TextAlign.right,
-                                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                const Divider(height: 1, color: HudColors.borderIdle),
-                                ListTile(
-                                  dense: true,
-                                  leading: const Icon(Icons.shield_outlined, color: HudColors.activePrimary),
-                                  title: const Text('Split Tunneling', textAlign: TextAlign.right),
-                                  subtitle: const Text(
-                                    'مدیریت برنامه‌های خارج از VPN',
-                                    textAlign: TextAlign.right,
-                                    style: TextStyle(color: Colors.white54, fontSize: 10),
-                                  ),
-                                  onTap: () {
-                                    Navigator.of(dialogContext).pop();
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => const SplitTunnelingScreen(),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: AppBar(
+            automaticallyImplyLeading: false,
+            leading: Builder(
+              builder: (context) => IconButton(
+                tooltip: 'منو',
+                icon: const Icon(Icons.menu, color: Colors.white70),
+                onPressed: () {
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  showGeneralDialog<void>(
+                    context: context,
+                    barrierDismissible: true,
+                    barrierLabel: 'منو',
+                    barrierColor: Colors.black54,
+                    transitionDuration: const Duration(milliseconds: 220),
+                    pageBuilder:
+                        (dialogContext, animation, secondaryAnimation) {
+                      return Align(
+                        alignment: Alignment.centerLeft,
+                        child: Material(
+                          color: HudColors.surface,
+                          elevation: 16,
+                          child: SizedBox(
+                            width: screenWidth * 0.58,
+                            height: double.infinity,
+                            child: Directionality(
+                              textDirection: TextDirection.rtl,
+                              child: SafeArea(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    const Padding(
+                                      padding:
+                                          EdgeInsets.fromLTRB(18, 24, 18, 18),
+                                      child: Text(
+                                        'منو',
+                                        textAlign: TextAlign.right,
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
-                                    );
-                                  },
+                                    ),
+                                    const Divider(
+                                      height: 1,
+                                      color: HudColors.borderIdle,
+                                    ),
+                                    ListTile(
+                                      leading: const Icon(
+                                        Icons.shield_outlined,
+                                        color: HudColors.activePrimary,
+                                      ),
+                                      title: const Text(
+                                        'split tunneling',
+                                        textAlign: TextAlign.right,
+                                      ),
+                                      subtitle: const Text(
+                                        'مدیریت برنامه‌های خارج از VPN',
+                                        textAlign: TextAlign.right,
+                                        style: TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                      onTap: () {
+                                        Navigator.of(dialogContext).pop();
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute<void>(
+                                            builder: (_) =>
+                                                const SplitTunnelingScreen(),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
+                      );
+                    },
+                    transitionBuilder:
+                        (context, animation, secondaryAnimation, child) {
+                      final slide = Tween<Offset>(
+                        begin: const Offset(-1, 0),
+                        end: Offset.zero,
+                      ).animate(
+                        CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeOut,
+                        ),
+                      );
+                      return SlideTransition(position: slide, child: child);
+                    },
+                  );
+                },
+              ),
+            ),
+            title: Column(
+              children: [
+                const Text(
+                  'HUSKY VPN',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2.0,
+                    color: Colors.white,
+                  ),
+                ),
+                Text(
+                  'CORE // $_coreVersion',
+                  style: TextStyle(
+                    fontSize: 10,
+                    letterSpacing: 1.2,
+                    color: accentColor.withOpacity(0.8),
+                  ),
+                ),
+              ],
+            ),
+            centerTitle: true,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.logout, color: HudColors.standbyPrimary),
+                onPressed: () {
+                  showDialog<void>(
+                    context: context,
+                    builder: (dialogContext) => AlertDialog(
+                      backgroundColor: HudColors.surface,
+                      title: const Text('خروج از حساب'),
+                      content: const Text(
+                        'آیا می‌خواهید از حساب کاربری خود خارج شوید؟',
                       ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogContext),
+                          child: const Text('انصراف'),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(dialogContext);
+                            _logoutUser('');
+                          },
+                          child: const Text(
+                            'خروج',
+                            style: TextStyle(color: HudColors.standbyPrimary),
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 },
-                transitionBuilder: (context, animation, secondaryAnimation, child) {
-                  final slide = Tween<Offset>(
-                    begin: const Offset(-1, 0),
-                    end: Offset.zero,
-                  ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
-                  return SlideTransition(position: slide, child: child);
-                },
-              );
-            },
+              ),
+            ],
           ),
         ),
-        title: const Text(
-          'Husky vpn',
-          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white),
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            tooltip: 'خروج از حساب',
-            icon: const Icon(Icons.logout_rounded, color: HudColors.standbyPrimary, size: 20),
-            onPressed: () {
-              showDialog<void>(
-                context: context,
-                builder: (dialogContext) => AlertDialog(
-                  backgroundColor: HudColors.surface,
-                  title: const Text('خروج از حساب'),
-                  content: const Text('آیا می‌خواهید از حساب کاربری خود خارج شوید؟'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('انصراف'),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pop(dialogContext);
-                        _logoutUser('');
-                      },
-                      child: const Text('خروج', style: TextStyle(color: HudColors.standbyPrimary)),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
       ),
-      body: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            _buildAnnouncementBanner(),
-            _buildSubscriptionSummary(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 2, 10, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isTestingAllPings ? null : _testAllPings,
-                      icon: _isTestingAllPings
-                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.bolt_rounded, size: 17),
-                      label: Text(_isTestingAllPings ? 'در حال تست...' : 'تست پینگ همه سرورها', style: const TextStyle(fontSize: 11)),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: HudColors.activeSecondary,
-                        side: BorderSide(color: HudColors.activeSecondary.withOpacity(0.45)),
-                        minimumSize: const Size(0, 36),
-                        padding: const EdgeInsets.symmetric(horizontal: 7),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isRefreshingSubscription ? null : _refreshSubscription,
-                      icon: const Icon(Icons.refresh_rounded, size: 16),
-                      label: const Text('تازه‌سازی اشتراک', style: TextStyle(fontSize: 11)),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: HudColors.activePrimary,
-                        side: BorderSide(color: HudColors.activePrimary.withOpacity(0.45)),
-                        minimumSize: const Size(0, 36),
-                        padding: const EdgeInsets.symmetric(horizontal: 7),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            _buildHudConnectReactor(accentColor),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-              child: Row(
-                children: [
-                  const Expanded(
-                    child: Text('سرورها', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                  ),
-                  Text(
-                    '${_configs.length} سرور',
-                    style: const TextStyle(color: Colors.white54, fontSize: 10),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: _isLoading
-                  ? Center(child: CircularProgressIndicator(color: accentColor))
-                  : _configs.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.cloud_off_rounded, size: 38, color: Colors.white38),
-                              const SizedBox(height: 10),
-                              const Text('سروری دریافت نشد.'),
-                              const SizedBox(height: 6),
-                              TextButton(onPressed: _fetchConfigs, child: const Text('تلاش دوباره')),
-                            ],
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(10, 2, 10, 10),
-                          itemCount: _configs.length,
-                          itemBuilder: (context, index) {
-                            final item = _configs[index];
-                            final configId = _configId(item);
-                            final isSelected = configId == _selectedConfigId;
-                            final ping = _pings[configId] ?? -1;
-                            final pingLoading = _pingLoading[configId] ?? false;
-                            final protocol = _getProtocolType(
-                              (item['config'] ?? '').toString(),
-                            );
+      body: Column(
+        children: [
+          _buildHudConnectReactor(accentColor),
+          _buildAnnouncementBanner(),
+          Expanded(
+            child: _isLoading
+                ? Center(
+                    child: CircularProgressIndicator(color: accentColor),
+                  )
+                : _configs.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.cloud_off,
+                              size: 42,
+                              color: Colors.white38,
+                            ),
+                            const SizedBox(height: 12),
+                            const Text('سروری دریافت نشد.'),
+                            const SizedBox(height: 8),
+                            TextButton(
+                              onPressed: _fetchConfigs,
+                              child: const Text('تلاش دوباره'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        itemCount: _configs.length,
+                        itemBuilder: (context, index) {
+                          final item = _configs[index];
+                          final configId = _configId(item);
+                          final configUrl = (item['config'] ?? '').toString();
+                          final protocol = _getProtocolType(configUrl);
+                          final isSelected = _selectedConfigId == configId;
+                          final ping = _pings[configId] ?? -1;
+                          final pingLoading = _pingLoading[configId] ?? false;
 
-                            return InkWell(
-                              borderRadius: BorderRadius.circular(9),
-                              onTap: _isConnectingProcess || _isConnected
-                                  ? null
-                                  : () {
-                                      setState(() {
-                                        _selectedConfigId = configId;
-                                        _moveSelectedConfigToFront();
-                                      });
-                                      unawaited(_saveSelectedConfigId(configId));
-                                    },
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 160),
-                                margin: const EdgeInsets.only(bottom: 7),
-                                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 9),
-                                decoration: BoxDecoration(
-                                  color: isSelected ? HudColors.surfaceAlt : HudColors.surface,
-                                  borderRadius: BorderRadius.circular(9),
-                                  border: Border.all(
-                                    color: isSelected ? accentColor : HudColors.borderIdle,
-                                    width: isSelected ? 1.3 : 0.8,
+                          return GestureDetector(
+                            onTap: () {
+                              if (_isConnected) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'لطفاً ابتدا اتصال فعلی را قطع کنید.',
+                                    ),
+                                    backgroundColor: HudColors.standbySecondary,
                                   ),
+                                );
+                                return;
+                              }
+
+                              setState(() {
+                                _selectedConfigId = configId;
+                                _moveSelectedConfigToFront();
+                              });
+                              unawaited(_saveSelectedConfigId(configId));
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              margin: const EdgeInsets.only(bottom: 9),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? HudColors.surfaceAlt
+                                    : HudColors.surface,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? accentColor
+                                      : HudColors.borderIdle,
+                                  width: isSelected ? 1.5 : 1.0,
                                 ),
+                              ),
+                              child: IntrinsicHeight(
                                 child: Row(
                                   children: [
                                     Container(
-                                      width: 25,
-                                      height: 39,
-                                      alignment: Alignment.center,
+                                      width: 28,
                                       decoration: BoxDecoration(
-                                        color: isSelected ? accentColor.withOpacity(0.13) : Colors.black26,
-                                        borderRadius: BorderRadius.circular(6),
+                                        color: isSelected
+                                            ? accentColor.withOpacity(0.16)
+                                            : Colors.black26,
+                                        borderRadius: const BorderRadius.only(
+                                          topLeft: Radius.circular(9),
+                                          bottomLeft: Radius.circular(9),
+                                        ),
                                       ),
+                                      alignment: Alignment.center,
                                       child: RotatedBox(
                                         quarterTurns: 3,
                                         child: Text(
                                           protocol,
                                           style: TextStyle(
-                                            color: isSelected ? accentColor : Colors.white38,
-                                            fontSize: 9,
+                                            color: isSelected
+                                                ? accentColor
+                                                : Colors.white38,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 0.8,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 14,
+                                        ),
+                                        child: Text(
+                                          (item['name'] ?? 'سرور Xray')
+                                              .toString(),
+                                          style: TextStyle(
+                                            color: isSelected
+                                                ? Colors.white
+                                                : Colors.white70,
+                                            fontSize: 14,
+                                            fontWeight: isSelected
+                                                ? FontWeight.w700
+                                                : FontWeight.w500,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.all(8),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: pingLoading
+                                              ? Colors.white10
+                                              : ping > 0
+                                                  ? HudColors.activeSecondary
+                                                      .withOpacity(0.15)
+                                                  : HudColors.standbyPrimary
+                                                      .withOpacity(0.15),
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: pingLoading
+                                                ? Colors.white24
+                                                : ping > 0
+                                                    ? HudColors.activeSecondary
+                                                        .withOpacity(0.5)
+                                                    : HudColors.standbyPrimary
+                                                        .withOpacity(0.5),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          pingLoading
+                                              ? '...'
+                                              : ping > 0
+                                                  ? '${ping}ms'
+                                                  : '-1ms',
+                                          style: TextStyle(
+                                            color: pingLoading
+                                                ? Colors.white54
+                                                : ping > 0
+                                                    ? HudColors.activeSecondary
+                                                    : HudColors.standbyPrimary,
+                                            fontSize: 11,
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 9),
-                                    Expanded(
-                                      child: Text(
-                                        (item['name'] ?? 'سرور Xray').toString(),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: isSelected ? Colors.white : Colors.white70,
-                                          fontSize: 12,
-                                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 7),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: pingLoading
-                                            ? Colors.white10
-                                            : ping > 0
-                                                ? HudColors.activeSecondary.withOpacity(0.13)
-                                                : HudColors.standbyPrimary.withOpacity(0.12),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Text(
-                                        pingLoading ? '...' : ping > 0 ? '${ping}ms' : '-- ms',
-                                        style: TextStyle(
-                                          color: pingLoading
-                                              ? Colors.white54
-                                              : ping > 0
-                                                  ? HudColors.activeSecondary
-                                                  : HudColors.standbyPrimary,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    if (isSelected) ...[
-                                      const SizedBox(width: 6),
-                                      Icon(Icons.check_circle_rounded, color: accentColor, size: 17),
-                                    ],
                                   ],
                                 ),
                               ),
-                            );
-                          },
-                        ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          color: HudColors.surface,
+          border: Border(
+            top: BorderSide(color: HudColors.borderIdle, width: 1),
+          ),
+        ),
+        height: 62,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            InkWell(
+              onTap: _fetchConfigs,
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.file_download_outlined,
+                    color: HudColors.activePrimary,
+                    size: 20,
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Get Config',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  maxGb > 0
+                      ? 'حجم: ${usedGb.toStringAsFixed(2)} / '
+                          '${maxGb.toStringAsFixed(1)} GB'
+                      : 'حجم: نامحدود',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'اعتبار: $_remainingTimeText',
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+            InkWell(
+              onTap: _isTestingAllPings ? null : _testAllPings,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.bolt,
+                    color: _isTestingAllPings
+                        ? HudColors.standbySecondary
+                        : HudColors.activeSecondary,
+                    size: 20,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _isTestingAllPings ? 'Testing...' : 'Test',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
